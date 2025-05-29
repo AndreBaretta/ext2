@@ -55,12 +55,19 @@ typedef struct Superblock{
    uint32_t s_first_meta_bg;
    char s_unused[760];
 
-} Superblock;
+} superblock;
 
 //***BLOCK GROUP DESCRIPTOR:
 
 typedef struct {
-   
+   uint32_t bg_block_bitmap;
+   uint32_t bg_inode_bitmap;
+   uint32_t bg_inode_table;
+   uint16_t bg_free_blocks_count;
+   uint16_t bg_free_inodes_count;
+   uint16_t bg_used_dirs_count;
+   uint16_t bg_pad;
+   char bg_reserved[12];
 } block_group_descriptor;
 
 //***I_OSD2:
@@ -93,6 +100,6 @@ typedef struct {
    uint32_t i_dir_acl;
    uint32_t i_faddr;
    i_osd2 i_osd2;
-} Inode;
+} inode;
 
 #pragma pack(pop)
