@@ -1,3 +1,8 @@
+// - Descrição:............ Struct de Inodes
+// - Autor:................ André Felipe Baretta
+// - Data de Criação:...... 25/05/2025
+// - Data de Atualização:.. 26/05/2025
+
 #include <stdint.h>
 
 typedef struct {
