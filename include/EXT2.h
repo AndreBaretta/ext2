@@ -7,54 +7,47 @@
 #pragma pack(push,1)
 
 typedef struct {
-   uint32_t s_nodes_count;
-   uint32_t s_blocks_count;
-   uint32_t s_r_blocks_count;
-   uint32_t s_free_blocks_count;
-   uint32_t s_first_data_count;
-   uint32_t s_log_block_size;
-   uint32_t s_log_frag_size;
-   uint32_t s_blocks_per_group;
-   uint32_t s_frags_per_group;
-   uint32_t s_inodes_per_group;
-   uint32_t s_mtime;
-   uint32_t s_wtime;
-   uint16_t s_mnt_count;
-   uint16_t s_max_mnt_count;
-   uint16_t s_magic;
-   uint16_t s_state;
-   uint16_t s_errors;
-   uint16_t s_minor_rev_level;
-   uint32_t s_lastcheck;
-   uint32_t s_checkinterval;
-   uint32_t s_creator_os;
-   uint32_t s_rev_level;
-   uint16_t s_def_resuid;
-   uint16_t s_def_resgid;
-   uint32_t s_first_ino;
-   uint16_t s_inode_size;
-   uint16_t s_block_group_nr;
-   uint32_t s_feature_compat;
-   uint32_t s_feature_incompat;
-   uint32_t s_feature_ro_compat;
-   char s_uuid[16];
-   char s_volume_name[16];
-   char s_last_mounted[64];
-   uint32_t s_algo_bitmpap;
-   char s_prealloc_blocks;
-   char s_prealloc_dir_blocks;
-   uint16_t s_aligment; //UNUSED
-   char s_journal_uuid[16];
-   uint32_t s_journal_inum;
-   uint32_t s_journal_dev;
-   uint32_t s_last_orphan;
-   uint32_t s_hash_seed[4];
-   char s_def_hash_version;
-   char s_padding[3];
-   uint32_t s_default_mount_options;
-   uint32_t s_first_meta_bg;
-   char s_unused[760];
-
+   uint32_t s_inodes_count;        // Número total de inodes
+   uint32_t s_blocks_count;        // Número total de blocos
+   uint32_t s_r_blocks_count;      // Número de blocos reservados
+   uint32_t s_free_blocks_count;   // Número de blocos livres
+   uint32_t s_free_inodes_count;   // Número de inodes livres
+   uint32_t s_first_data_block;    // Número do primeiro bloco de dados
+   uint32_t s_log_block_size;      // Tamanho do bloco em potências de 2
+   uint32_t s_log_frag_size;       // Tamanho do fragmento em potências de 2
+   uint32_t s_blocks_per_group;    // Número de blocos por grupo
+   uint32_t s_frags_per_group;     // Número de fragmentos por grupo
+   uint32_t s_inodes_per_group;    // Número de inodes por grupo
+   uint32_t s_mtime;               // Hora da última montagem
+   uint32_t s_wtime;               // Hora da última escrita
+   uint16_t s_mnt_count;           // Contador de montagens
+   uint16_t s_max_mnt_count;       // Contador máximo de montagens
+   uint16_t s_magic;              // Número mágico (0xEF53 para EXT2)
+   uint16_t s_state;              // Estado do sistema de arquivos (0x0001 = montado)
+   uint16_t s_errors;             // Comportamento em caso de erro (0x0001 = continuar)
+   uint16_t s_minor_rev_level;    // Nível de revisão menor
+   uint32_t s_lastcheck;          // Hora da última verificação
+   uint32_t s_checkinterval;      // Intervalo entre verificações
+   uint32_t s_creator_os;         // Sistema operacional criador (0x00000001 = Linux)
+   uint32_t s_rev_level;          // Nível de revisão do sistema de arquivos
+   uint16_t s_def_resuid;         // UID do usuário reservado por padrão
+   uint16_t s_def_resgid;         // GID do grupo reservado por padrão
+   uint32_t s_first_ino;          // Número do primeiro inode (normalmente 11)
+   uint16_t s_inode_size;         // Tamanho do inode em bytes
+   uint16_t s_block_group_nr;     // Número do grupo de blocos
+   uint32_t s_feature_compat;     // Recursos compatíveis
+   uint32_t s_feature_incompat;   // Recursos incompatíveis
+   uint32_t s_feature_ro_compat;  // Recursos somente leitura compatíveis
+   char s_uuid[16];               // UUID do sistema de arquivos
+   char s_volume_name[16];        // Nome do volume
+   char s_last_mounted[64];       // Último ponto de montagem
+   uint32_t s_algo_bitmap;        // Bitmap de uso de algoritmos
+   uint8_t s_prealloc_blocks;     // Número de blocos pré-alocados
+   uint8_t s_prealloc_dir_blocks; // Número de blocos pré-alocados para diretórios
+   uint16_t s_padding1;           // Preenchimento
+   uint32_t s_reserved[204];      // Reservado para uso futuro
+   uint8_t s_journal_uuid[16];    // UUID do journal
+   uint32_t s_journal_inum;       // Número do inode do journal
 } Superblock;
 
 //***BLOCK GROUP DESCRIPTOR:

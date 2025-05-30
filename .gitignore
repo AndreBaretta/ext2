@@ -51,5 +51,7 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+ext2_test.img
 ext2_shell
 .vscode/
+test*
