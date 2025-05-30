@@ -6,7 +6,7 @@
 
 #pragma pack(push,1)
 
-typedef struct Superblock{
+typedef struct {
    uint32_t s_nodes_count;
    uint32_t s_blocks_count;
    uint32_t s_r_blocks_count;
@@ -55,7 +55,7 @@ typedef struct Superblock{
    uint32_t s_first_meta_bg;
    char s_unused[760];
 
-} superblock;
+} Superblock;
 
 //***BLOCK GROUP DESCRIPTOR:
 
@@ -93,7 +93,6 @@ typedef struct {
    uint16_t i_links_count;
    uint32_t i_blocks;
    uint32_t i_flags;
-   uint32_t i_ctime;
    uint32_t i_block[15];
    uint32_t i_generation;
    uint32_t i_file_acl;

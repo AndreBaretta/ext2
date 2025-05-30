@@ -3,7 +3,17 @@
 #include "EXT2.h"
 
 //Operações de leitura e escrita no sistema de arquivos EXT2:
-// int read_superblock(FILE *file, Superblock *sb);
+int read_superblock(FILE *file, Superblock *sb){
+    if (fseek(file, 1024, SEEK_SET) != 0) {
+        perror("Error seeking to superblock");
+        return -1;
+    }
+    if (fread(sb, sizeof(Superblock), 1, file) != 1) {
+        perror("Error reading superblock");
+        return -1;
+    }
+    return 0;
+}
 // int write_superblock(FILE *file, Superblock *sb);
 // int read_block_group_descriptor(FILE *file, BlockGroupDescriptor *bgd, int group_number);
 // int write_block_group_descriptor(FILE *file, BlockGroupDescriptor *bgd, int group_number);
