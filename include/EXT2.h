@@ -1,3 +1,5 @@
+#ifndef EXT2
+#define EXT2
 #include <stdint.h>
 
 //Estruturas de dados do sistesma de arquivos EXT2
@@ -94,4 +96,14 @@ typedef struct {
    i_osd2 i_osd2;
 } inode;
 
+typedef struct {
+   uint32_t inode;
+   uint16_t rec_len;
+   uint8_t name_len;
+   uint8_t file_type;
+   char name[255];
+} ext2_dir_entry;
+
 #pragma pack(pop)
+
+#endif
