@@ -44,7 +44,7 @@ int main() {
         print_directory_entry(entry);
 
         if (entry->rec_len == 0) {
-            fprintf(stderr, "rec_len == 0! Abortando.\n");
+            fprintf(stderr, "rec_len == 0\n");
             free(entry);
             break;
         }

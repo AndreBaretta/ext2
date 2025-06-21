@@ -15,11 +15,11 @@
 
 int read_superblock(FILE *file, Superblock *sb){
     if (fseek(file, 1024, SEEK_SET) != 0) {
-        perror("Error seeking to superblock");
+        perror("Erro ao buscar o superblock");
         return -1;
     }
     if (fread(sb, sizeof(Superblock), 1, file) != 1) {
-        perror("Error reading superblock");
+        perror("Erro ao ler o superblock");
         return -1;
     }
     return 0;
@@ -27,11 +27,11 @@ int read_superblock(FILE *file, Superblock *sb){
 
 int write_superblock(FILE *file, Superblock *sb){
     if (fseek(file, 1024, SEEK_SET) != 0) {
-        perror("Error seeking to superblock");
+        perror("Erro ao buscar o superblock");
         return -1;
     }
     if (fwrite(sb, sizeof(Superblock), 1, file) != 1) {
-        perror("Error writing superblock");
+        perror("Erro ao escrever o superblock");
         return -1;
     }
     return 0;
@@ -91,11 +91,11 @@ void print_superblock(Superblock *sb){
 
 int read_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_size){
     if (fseek(file, block_number * block_size, SEEK_SET) != 0) {
-        perror("Error seeking to block");
+        perror("Erro ao buscar o bloco");
         return -1;
     }
     if (fread(buffer, block_size, 1, file) != 1) {
-        perror("Error reading block");
+        perror("Erro ao ler o bloco");
         return -1;
     }
     return 0;
@@ -103,11 +103,11 @@ int read_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_s
 
 int write_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_size){
     if (fseek(file, block_number * block_size, SEEK_SET) != 0) {
-        perror("Error seeking to block");
+        perror("Erro ao buscar o bloco");
         return -1;
     }
     if (fwrite(buffer, block_size, 1, file) != 1) {
-        perror("Error writing block");
+        perror("Erro ao escrever o bloco");
         return -1;
     }
     return 0;
@@ -124,11 +124,11 @@ int read_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superbl
     uint32_t position = descriptor_table_position + group_number * sizeof(block_group_descriptor);
 
     if (fseek(file, position, SEEK_SET) != 0) {
-        perror("Error seeking to block group descriptor");
+        perror("Erro ao buscar o bloco do grupo");
         return -1;
     }
     if (fread(bgd, sizeof(block_group_descriptor), 1, file) != 1) {
-        perror("Error reading block group descriptor");
+        perror("Erro ao ler o bloco do grupo");
         return -1;
     }
 
@@ -144,11 +144,11 @@ int write_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superb
     uint32_t position = descriptor_table_position + group_number * sizeof(block_group_descriptor);
 
     if (fseek(file, position, SEEK_SET) != 0) {
-        perror("Error seeking to block group descriptor");
+        perror("Erro ao buscar o bloco descritor do grupo");
         return -1;
     }
     if (fwrite(bgd, sizeof(block_group_descriptor), 1, file) != 1) {
-        perror("Error writing block group descriptor");
+        perror("Erro ao escrever o bloco descritor do grupo");
         return -1;
     }
 
@@ -179,11 +179,11 @@ int read_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor 
     uint32_t inode_position = inode_table_position + index * sb->s_inode_size;  
 
     if (fseek(file, inode_position, SEEK_SET) != 0) {
-        perror("Error seeking to inode");
+        perror("Erro ao buscar o inode");
         return -1;
     }
     if (fread(inode, sb->s_inode_size, 1, file) != 1) {
-        perror("Error reading inode");
+        perror("Erro ao ler o inode");
         return -1;
     }
 
@@ -201,11 +201,11 @@ int write_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor
     uint32_t inode_position = inode_table_position + index * sb->s_inode_size;
 
     if (fseek(file, inode_position, SEEK_SET) != 0) {
-        perror("Error seeking to inode");
+        perror("Erro ao buscar o inode");
         return -1;
     }
     if (fwrite(inode, sb->s_inode_size, 1, file) != 1) {
-        perror("Error writing inode");
+        perror("Erro ao escrever o inode");
         return -1;
     }
     return 0;
@@ -244,29 +244,29 @@ int read_directory_entry(FILE *file, ext2_dir_entry **entry, Superblock *sb, ino
     uint8_t temp[8];
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Error seeking to directory entry");
+        perror("Erro ao buscar o diretório");
         return -1;
     }
     if (fread(temp, 1, 8, file) != 8) {
-        perror("Error reading directory entry");
+        perror("Erro ao ler o diretório");
         return -1;
     }
 
     uint16_t rec_len = *(uint16_t *)&temp[4];
 
     if(rec_len < 8 || rec_len > block_size || rec_len % 4 != 0){
-        fprintf(stderr, "Invalid record length\n");
+        fprintf(stderr, "Tamanho de registro inválido\n");
         return -1;
     }
 
     *entry = malloc(rec_len);
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Error seeking to directory entry");
+        perror("Erro ao buscar o diretório");
         return -1;
     }
     if (fread(*entry, rec_len, 1, file) != 1) {
-        perror("Error reading directory entry");
+        perror("Erro ao ler o diretório");
         return -1;
     }
 
@@ -278,18 +278,18 @@ int write_directory_entry(FILE *file, ext2_dir_entry *entry, Superblock *sb, ino
 
     uint32_t block_number = inode->i_block[offset / block_size];
     if(block_number == 0){
-        fprintf(stderr, "Block number is 0\n");
+        fprintf(stderr, "Número de bloco é 0\n");
         return -1;
     }
 
     uint32_t block_position = block_number * block_size + (offset % block_size);
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Error seeking to directory entry");
+        perror("Erro ao buscar o diretório");
         return -1;
     }
     if (fwrite(entry, entry->rec_len, 1, file) != 1) {
-        perror("Error writing directory entry");
+        perror("Erro ao escrever o diretório");
         return -1;
     }
 
@@ -314,11 +314,11 @@ int read_file_data(FILE *file, void *buffer, Superblock *sb, inode *inode, uint3
     uint32_t block_position = block_number * block_size + (offset % block_size);
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Error seeking to file data");
+        perror("Erro ao buscar o arquivo");
         return -1;
     }
     if (fread(buffer, size, 1, file) != 1) {
-        perror("Error reading file data");
+        perror("Erro ao ler o arquivo");
         return -1;
     }
 
@@ -333,11 +333,11 @@ int write_file_data(FILE *file, void *buffer, Superblock *sb, inode *inode, uint
     uint32_t block_position = block_number * block_size + (offset % block_size);
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Error seeking to file data");
+        perror("Erro ao buscar o arquivo");
         return -1;
     }
     if (fwrite(buffer, size, 1, file) != 1) {
-        perror("Error writing file data");
+        perror("Erro ao escrever o arquivo");
         return -1;
     }
     return 0;
@@ -355,11 +355,11 @@ int read_inode_bitmap(FILE *file, uint8_t *bitmap, Superblock *sb, block_group_d
     uint32_t inode_bitmap_size = sb->s_inodes_per_group / 8;
 
     if (fseek(file, inode_bitmap_position, SEEK_SET) != 0) {
-        perror("Error seeking to inode bitmap");
+        perror("Erro ao buscar o bitmap do inode");
         return -1;
     }
     if (fread(bitmap, inode_bitmap_size, 1, file) != 1) {
-        perror("Error reading inode bitmap");
+        perror("Erro ao ler o bitmap do inode");
         return -1;
     }
 
@@ -375,11 +375,11 @@ int write_inode_bitmap(FILE *file, const uint8_t *bitmap, Superblock *sb, block_
     uint32_t inode_bitmap_size = sb->s_inodes_per_group / 8;
 
     if (fseek(file, inode_bitmap_position, SEEK_SET) != 0) {
-        perror("Error seeking to inode bitmap");
+        perror("Erro ao buscar o bitmap do inode");
         return -1;
     }
     if (fwrite(bitmap, inode_bitmap_size, 1, file) != 1) {
-        perror("Error writing inode bitmap");
+        perror("Erro ao escrever o bitmap do inode");
         return -1;
     }
 
@@ -407,11 +407,11 @@ int read_block_bitmap(FILE* file, uint8_t *bitmap, Superblock *sb, block_group_d
 
 
     if (fseek(file, block_bitmap_position, SEEK_SET) != 0) {
-        perror("Error seeking to inode bitmap");
+        perror("Erro ao buscar o bitmap do bloco");
         return -1;
     }
     if (fread(bitmap, block_bitmap_size, 1, file) != 1) {
-        perror("Error reading inode bitmap");
+        perror("Erro ao ler o bitmap do bloco");
         return -1;
     }
 
@@ -427,11 +427,11 @@ int write_block_bitmap(FILE *file, const uint8_t *bitmap, Superblock *sb, block_
     uint32_t block_bitmap_size = sb->s_blocks_per_group / 8;
 
     if (fseek(file, block_bitmap_position, SEEK_SET) != 0) {
-        perror("Error seeking to inode bitmap");
+        perror("Erro ao buscar o bitmap do bloco");
         return -1;
     }
     if (fwrite(bitmap, block_bitmap_size, 1, file) != 1) {
-        perror("Error writing inode bitmap");
+        perror("Erro ao escrever o bitmap do bloco");
         return -1;
     }
 
@@ -448,6 +448,3 @@ int is_block_used(const uint8_t *bitmap, uint32_t block_number, uint32_t blocks_
     return is_used;
 }
 
-// int write_directory_entry(FILE *file, const DirectoryEntry *entry, int inode_number, int offset);
-// int read_file_data(FILE *file, void *buffer, int inode_number, int offset, size_t size);
-// int write_file_data(FILE *file, const void *buffer, int inode_number, int offset, size_t size);
