@@ -16,6 +16,18 @@ int read_superblock(FILE *file, Superblock *sb){
     return 0;
 }
 
+int write_superblock(FILE *file, Superblock *sb){
+    if (fseek(file, 1024, SEEK_SET) != 0) {
+        perror("Error seeking to superblock");
+        return -1;
+    }
+    if (fwrite(sb, sizeof(Superblock), 1, file) != 1) {
+        perror("Error writing superblock");
+        return -1;
+    }
+    return 0;
+}
+
 void print_uuid(const char uuid[16]) {
     for (int i = 0; i < 16; i++) {
         printf("%02x", (unsigned char)uuid[i]);
@@ -68,7 +80,7 @@ void print_superblock(Superblock *sb){
     printf("Journal inum: %d\n", sb->s_journal_inum);
 }
 
-int read_block(FILE *file, void *buffer, int block_number, int block_size){
+int read_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_size){
     if (fseek(file, block_number * block_size, SEEK_SET) != 0) {
         perror("Error seeking to block");
         return -1;
@@ -80,7 +92,19 @@ int read_block(FILE *file, void *buffer, int block_number, int block_size){
     return 0;
 }
 
-int read_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superblock *sb, int group_number){
+int write_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_size){
+    if (fseek(file, block_number * block_size, SEEK_SET) != 0) {
+        perror("Error seeking to block");
+        return -1;
+    }
+    if (fwrite(buffer, block_size, 1, file) != 1) {
+        perror("Error writing block");
+        return -1;
+    }
+    return 0;
+}
+
+int read_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superblock *sb, uint32_t group_number){
     uint32_t block_size = 1024 << sb->s_log_block_size;
 
     uint32_t descriptor_table_block = (block_size == 1024) ? 2 : 1;
@@ -100,7 +124,27 @@ int read_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superbl
     return 0;
 }
 
-void print_block_group_descriptor(block_group_descriptor *bgd, int number){
+int write_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superblock *sb, uint32_t group_number){
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+
+    uint32_t descriptor_table_block = (block_size == 1024) ? 2 : 1;
+    uint32_t descriptor_table_position = descriptor_table_block * block_size;
+
+    uint32_t position = descriptor_table_position + group_number * sizeof(block_group_descriptor);
+
+    if (fseek(file, position, SEEK_SET) != 0) {
+        perror("Error seeking to block group descriptor");
+        return -1;
+    }
+    if (fwrite(bgd, sizeof(block_group_descriptor), 1, file) != 1) {
+        perror("Error writing block group descriptor");
+        return -1;
+    }
+
+    return 0;
+}
+
+void print_block_group_descriptor(block_group_descriptor *bgd, uint32_t number){
     printf("Block group descriptor %d:\n", number);
     printf("Block bitmap: %d\n", bgd->bg_block_bitmap);
     printf("Inode bitmap: %d\n", bgd->bg_inode_bitmap);
@@ -111,7 +155,7 @@ void print_block_group_descriptor(block_group_descriptor *bgd, int number){
     printf("\n");
 }
 
-int read_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor *bgd_list, int inode_number){
+int read_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor *bgd_list, uint32_t inode_number){
     uint32_t block_size = 1024 << sb->s_log_block_size;
 
     uint32_t group = (inode_number - 1) / sb->s_inodes_per_group;
@@ -129,11 +173,32 @@ int read_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor 
         perror("Error reading inode");
         return -1;
     }
-    
+
     return 0;
 }
 
-void print_inode(inode *inode, int number){
+int write_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor *bgd, uint32_t inode_number){
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+
+    uint32_t group = (inode_number - 1) / sb->s_inodes_per_group;
+    uint32_t index = (inode_number - 1) % sb->s_inodes_per_group;
+
+    uint32_t inode_table_position = bgd[group].bg_inode_table * block_size;
+
+    uint32_t inode_position = inode_table_position + index * sb->s_inode_size;
+
+    if (fseek(file, inode_position, SEEK_SET) != 0) {
+        perror("Error seeking to inode");
+        return -1;
+    }
+    if (fwrite(inode, sb->s_inode_size, 1, file) != 1) {
+        perror("Error writing inode");
+        return -1;
+    }
+    return 0;
+}
+
+void print_inode(inode *inode, uint32_t number){
     printf("Inode %d: \n", number);
     printf("Size: %d\n", inode->i_size);
     printf("Blocks: %d\n", inode->i_blocks);
@@ -148,13 +213,6 @@ void print_inode(inode *inode, int number){
     printf("Directory ACL: %d\n", inode->i_dir_acl);
 }
 
-// int write_superblock(FILE *file, Superblock *sb);
-// int read_block_group_descriptor(FILE *file, BlockGroupDescriptor *bgd, int group_number);
-// int write_block_group_descriptor(FILE *file, BlockGroupDescriptor *bgd, int group_number);
-// int read_inode(FILE *file, Inode *inode, int inode_number);
-// int write_inode(FILE *file, Inode *inode, int inode_number);
-// int read_block(FILE *file, void *buffer, int block_number);
-// int write_block(FILE *file, const void *buffer, int block_number);
 // int read_inode_bitmap(FILE *file, uint8_t *bitmap, int group_number);
 // int write_inode_bitmap(FILE *file, const uint8_t *bitmap, int group_number);
 // int read_block_bitmap(FILE *file, uint8_t *bitmap, int group_number);
