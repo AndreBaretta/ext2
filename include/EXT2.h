@@ -1,3 +1,8 @@
+//  - Descrição:............ Código responsável por declarar as estruturas de dados do sistema de arquivos EXT2
+//  - Autor:................ André Felipe Baretta, Henry Meneguini Farias, João Pedro Inoe
+//  - Data de criação:...... 26/05/2025
+//  - Datas de atualização:. 26/05/2025, 29/05/2025, 21/06/2025.
+
 #ifndef EXT2
 #define EXT2
 #include <stdint.h>
@@ -88,6 +93,7 @@ typedef struct {
    uint16_t i_links_count;
    uint32_t i_blocks;
    uint32_t i_flags;
+   uint32_t i_osd1;
    uint32_t i_block[15];
    uint32_t i_generation;
    uint32_t i_file_acl;
@@ -101,8 +107,8 @@ typedef struct {
    uint16_t rec_len;
    uint8_t name_len;
    uint8_t file_type;
-   char name[255];
-} ext2_dir_entry;
+   char name[];
+} __attribute__((packed)) ext2_dir_entry;
 
 #pragma pack(pop)
 

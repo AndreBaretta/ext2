@@ -1,3 +1,8 @@
+//  - Descrição:............ Código responsável por criar um shell para o sistema de arquivos EXT2
+//  - Autor:................ André Felipe Baretta, João Pedro Inoe
+//  - Data de criação:...... 29/05/2025
+//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025.
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>

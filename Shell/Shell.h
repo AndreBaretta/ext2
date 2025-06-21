@@ -1,3 +1,8 @@
+//  - Descrição:............ Código responsável por declarar as funções do shell
+//  - Autor:................ André Felipe Baretta, João Pedro Inoe
+//  - Data de criação:...... 29/05/2025
+//  - Datas de atualização:. 29/05/2025, 21/06/2025.
+
 #ifndef SHELL_H
 #define SHELL_H
 

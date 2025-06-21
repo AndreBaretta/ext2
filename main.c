@@ -18,8 +18,42 @@ int main() {
         return 1;
     }
 
-    print_superblock(&sb);
+    int group_number = (sb.s_inodes_count + sb.s_inodes_per_group - 1) / sb.s_inodes_per_group;
+
+    block_group_descriptor* bgds = malloc(sizeof(block_group_descriptor) * group_number);
+
+    for(int i = 0; i < group_number; i++){
+        read_block_group_descriptor(file, &bgds[i], &sb, i);
+    }
+
+    inode inode;
+    if(read_inode(file, &inode, &sb, bgds, 2) != 0){
+        fprintf(stderr, "Erro ao ler o inode\n");
+        fclose(file);
+        free(bgds);
+        return 1;
+    }
+
+    uint32_t offset = 0;
+    while (offset < inode.i_size) {
+        ext2_dir_entry *entry = NULL;
+        if (read_directory_entry(file, &entry, &sb, &inode, offset) != 0) {
+            break;
+        }
+
+        print_directory_entry(entry);
+
+        if (entry->rec_len == 0) {
+            fprintf(stderr, "rec_len == 0! Abortando.\n");
+            free(entry);
+            break;
+        }
+
+        offset += entry->rec_len;
+        free(entry);
+    }
 
     fclose(file);
+    free(bgds);
     return 0;
 }
