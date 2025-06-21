@@ -17,6 +17,10 @@ int write_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_
 int write_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superblock *sb, uint32_t group_number);
 int write_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor *bgd, uint32_t inode_number);
 
+// Funções de Bitmap
+int read_inode_bitmap(FILE *file, uint8_t *bitmap, Superblock *sb, block_group_descriptor *bgd, uint32_t inode_number);
+int write_inode_bitmap(FILE *file, const uint8_t *bitmap, Superblock *sb, block_group_descriptor *bgd, uint32_t inode_number);
+
 // Funções de print
 void print_superblock(Superblock *sb);
 void print_uuid(const char uuid[16]);

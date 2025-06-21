@@ -4,6 +4,10 @@
 #include "../include/EXT2_Utils.h"
 
 //Operações de leitura e escrita no sistema de arquivos EXT2:
+
+
+// Funções de Superblock
+
 int read_superblock(FILE *file, Superblock *sb){
     if (fseek(file, 1024, SEEK_SET) != 0) {
         perror("Error seeking to superblock");
@@ -104,6 +108,8 @@ int write_block(FILE *file, void *buffer, uint32_t block_number, uint32_t block_
     return 0;
 }
 
+// Funções de Block Group Descriptor
+
 int read_block_group_descriptor(FILE *file, block_group_descriptor *bgd, Superblock *sb, uint32_t group_number){
     uint32_t block_size = 1024 << sb->s_log_block_size;
 
@@ -154,6 +160,8 @@ void print_block_group_descriptor(block_group_descriptor *bgd, uint32_t number){
     printf("Used dirs count: %d\n", bgd->bg_used_dirs_count);
     printf("\n");
 }
+
+// Funções de Inode
 
 int read_inode(FILE *file, inode *inode, Superblock *sb, block_group_descriptor *bgd_list, uint32_t inode_number){
     uint32_t block_size = 1024 << sb->s_log_block_size;
@@ -213,8 +221,55 @@ void print_inode(inode *inode, uint32_t number){
     printf("Directory ACL: %d\n", inode->i_dir_acl);
 }
 
-// int read_inode_bitmap(FILE *file, uint8_t *bitmap, int group_number);
-// int write_inode_bitmap(FILE *file, const uint8_t *bitmap, int group_number);
+// Funções de Bitmap
+
+int read_inode_bitmap(FILE *file, uint8_t *bitmap, Superblock *sb, block_group_descriptor *bgd, uint32_t inode_number){
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+
+    uint32_t group = (inode_number - 1) / sb->s_inodes_per_group;
+    uint32_t index = (inode_number - 1) % sb->s_inodes_per_group;
+
+    uint32_t inode_bitmap_block = bgd[group].bg_inode_bitmap;
+
+    uint32_t inode_bitmap_position = inode_bitmap_block * block_size + index * sb->s_inode_size;
+
+    uint32_t inode_bitmap_size = sb->s_inodes_per_group / 8;
+
+    if (fseek(file, inode_bitmap_position, SEEK_SET) != 0) {
+        perror("Error seeking to inode bitmap");
+        return -1;
+    }
+    if (fread(bitmap, inode_bitmap_size, 1, file) != 1) {
+        perror("Error reading inode bitmap");
+        return -1;
+    }
+
+    return 0;
+}
+
+int write_inode_bitmap(FILE *file, const uint8_t *bitmap, Superblock *sb, block_group_descriptor *bgd, uint32_t inode_number){
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+
+    uint32_t group = (inode_number - 1) / sb->s_inodes_per_group;
+    uint32_t index = (inode_number - 1) % sb->s_inodes_per_group;
+
+    uint32_t inode_bitmap_block = bgd[group].bg_inode_bitmap;
+    uint32_t inode_bitmap_position = inode_bitmap_block * block_size + index * sb->s_inode_size;
+
+    uint32_t inode_bitmap_size = sb->s_inodes_per_group / 8;
+
+    if (fseek(file, inode_bitmap_position, SEEK_SET) != 0) {
+        perror("Error seeking to inode bitmap");
+        return -1;
+    }
+    if (fwrite(bitmap, inode_bitmap_size, 1, file) != 1) {
+        perror("Error writing inode bitmap");
+        return -1;
+    }
+
+    return 0;
+}
+
 // int read_block_bitmap(FILE *file, uint8_t *bitmap, int group_number);
 // int write_block_bitmap(FILE *file, const uint8_t *bitmap, int group_number);
 // int read_directory_entry(FILE *file, DirectoryEntry *entry, int inode_number, int offset);
