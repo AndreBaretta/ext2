@@ -197,12 +197,14 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
             cmd_attr(args[1]);
         } else if (strcmp(args[0], "cd") == 0) {
-            char *argument_path;
-            if(argc == 1)
+            char *argument_path = malloc(sizeof(char) * MAX_PATH_SIZE);
+            if(argc == 1){
                 strcpy(argument_path, "/");
-            else 
+            } else{
                 strcpy(argument_path, args[1]);
+            } 
             cmd_cd(file, &sb, bgds, argument_path, current_path, &current_inode);
+            free(argument_path);
         } else if (strcmp(args[0], "ls") == 0) {
             char *path_arg = malloc(sizeof(char) * MAX_PATH_SIZE);
             if(argc >= 2){
