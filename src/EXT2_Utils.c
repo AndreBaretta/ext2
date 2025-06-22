@@ -4,11 +4,11 @@
 //  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025.
 
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include "../include/EXT2.h"
 #include "../include/EXT2_Utils.h"
+#include "../include/EXT2.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
 //Operações de leitura e escrita no sistema de arquivos EXT2:
 
@@ -469,7 +469,7 @@ uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds,
         inode current_inode;
         if(read_inode(file, &current_inode, sb, bgds, current_inode_num) != 0){
             fprintf(stderr, "Erro ao ler inode %u", current_inode_num);
-            return -1;
+            return 0;
         }
 
         uint32_t offset = 0;
@@ -499,7 +499,7 @@ uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds,
 
         if(!found){
             fprintf(stderr, "Path não encontrado: %s\n", token);
-            return -1;
+            return 0;
         }
 
         token = strtok(NULL, "/");
@@ -524,7 +524,6 @@ int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint
         if (read_inode(file, &current_inode, sb, bgds, current_inode_num) != 0) 
             return -1;
 
-        // Lê '..' (segunda entrada no diretório atual)
         ext2_dir_entry *entry;
         if (read_directory_entry(file, &entry, sb, &current_inode, 0) != 0) 
             return -1;
@@ -547,10 +546,13 @@ int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint
         while (offset < parent.i_size) {
             if (read_directory_entry(file, &entry, sb, &parent, offset) != 0) 
                 break;
+            char temp_name[256];
+            memcpy(temp_name, entry->name, entry->name_len);
+            temp_name[entry->name_len] = '\0';
 
             if (entry->inode == current_inode_num &&
-                strncmp(entry->name, ".", entry->name_len) != 0 &&
-                strncmp(entry->name, "..", entry->name_len) != 0) {
+                strcmp(temp_name, ".") != 0 &&
+                strcmp(temp_name, "..") != 0) {
 
                 char *name = malloc(entry->name_len + 1);
                 memcpy(name, entry->name, entry->name_len);
@@ -581,5 +583,30 @@ int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint
     return 0;
 }
 
+int resolve_path(const char *current_path, const char *path, char **return_path, size_t max_len) {
+    *return_path = malloc(sizeof(char) * max_len);
+    if (*return_path == NULL) {
+        return -1;
+    }
+
+    if (path[0] == '/') {
+        strncpy(*return_path, path, max_len - 1);
+        (*return_path)[max_len - 1] = '\0';
+        return 0;
+    }
+
+    strncpy(*return_path, current_path, max_len - 1);
+    (*return_path)[max_len - 1] = '\0';
+
+    size_t len = strlen(*return_path);
+
+    // Apenas adiciona '/' se não houver no final do current_path
+    if (len > 0 && (*return_path)[len - 1] != '/') {
+        strncat(*return_path, "/", max_len - strlen(*return_path) - 1);
+    }
+
+    strncat(*return_path, path, max_len - strlen(*return_path) - 1);
+    return 0;
+}
 
 

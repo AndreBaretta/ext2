@@ -40,5 +40,6 @@ int is_inode_used(const uint8_t *bitmap, uint32_t inode_number, uint32_t inodes_
 int is_block_used(const uint8_t *bitmap, uint32_t block_number, uint32_t blocks_per_group);
 uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path);
 int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num, char *path, size_t max_len);
+int resolve_path(const char *current_path, const char *path, char **return_path, size_t max_len);
 
 #endif

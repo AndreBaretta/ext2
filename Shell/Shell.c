@@ -5,10 +5,12 @@
 
 #include "../include/EXT2_Utils.h"
 #include "../include/EXT2.h"
+#include <sys/wait.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include "Shell.h"
 
@@ -35,21 +37,42 @@ void cmd_attr(const char *path) {
 }
 
 // Altera o diretório corrente para o definido em path
-int cmd_cd(const char *path) {
-    printf("Comando cd chamado para: %s\n", path);
-    // TODO: alterar diretório corrente (mudar inode atual para o inode do path)
+int cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, char *current_path, uint32_t *current_inode) {
+    char *resolved_path;
+    if(resolve_path(current_path, path, &resolved_path, MAX_PATH_SIZE) != 0){
+        fprintf(stderr, "Erro ao resolver o caminho");
+        return -1;
+    }
+
+    uint32_t inode_num = path_to_inode(file, sb, bgds, resolved_path);
+    if(inode_num == 0){
+        fprintf(stderr, "Diretorio não encontrado: %s", resolved_path);
+        return -1;
+    }
+
+    if(inode_to_path(file, sb, bgds, inode_num, resolved_path, MAX_PATH_SIZE)){
+        fprintf(stderr, "Erro ao resolver inode");
+        return -1;
+    }
+
+    *current_inode = inode_num;
+    strcpy(current_path, resolved_path);
+
+    free(resolved_path);
     return 0;
 }
 
-// Lista arquivos e diretórios do diretório corrente
 int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path) {
     uint32_t inode_num = path_to_inode(file, sb, bgds, path);
     
+    if(inode_num == 0){
+        fprintf(stderr, "Erro ao ler o inode");
+        return -1;
+    }
+
     inode inode;
     if(read_inode(file, &inode, sb, bgds, inode_num) != 0){
         fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
-        fclose(file);
-        free(bgds);
         return -1;
     }
 
@@ -61,6 +84,7 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
             fprintf(stderr, "Erro ao ler diretorio\n");
             return -1;
         }
+
         print_directory_entry(entry);
 
         offset += entry->rec_len;
@@ -124,7 +148,7 @@ int cmd_mv(const char *source_path, const char *target_path) {
     return 0;
 }
 
-void shell_loop(FILE* file) {
+void shell_loop(FILE *file) {
     char input[MAX_INPUT];
     char *args[MAX_ARGS];
 
@@ -147,7 +171,7 @@ void shell_loop(FILE* file) {
 
 
     while (1) {
-        printf("ext2sh> ");
+        printf("[%s] ", current_path);
         if (fgets(input, sizeof(input), stdin) == NULL) 
             break;
 
@@ -172,15 +196,29 @@ void shell_loop(FILE* file) {
             cmd_cat(args[1]);
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
             cmd_attr(args[1]);
-        } else if (strcmp(args[0], "cd") == 0 && argc == 2) {
-            cmd_cd(args[1]);
+        } else if (strcmp(args[0], "cd") == 0) {
+            char *argument_path;
+            if(argc == 1)
+                strcpy(argument_path, "/");
+            else 
+                strcpy(argument_path, args[1]);
+            cmd_cd(file, &sb, bgds, argument_path, current_path, &current_inode);
         } else if (strcmp(args[0], "ls") == 0) {
             char *path_arg = malloc(sizeof(char) * MAX_PATH_SIZE);
-            strcpy(path_arg, current_path);
             if(argc >= 2){
-                strcat(path_arg, args[1]);
+                strcpy(path_arg, args[1]);
+            } else{
+                path_arg[0] = '\0';
             }
-            cmd_ls(file, &sb, bgds, path_arg);
+            char *resolved_path;
+            if(resolve_path(current_path, path_arg, &resolved_path, MAX_PATH_SIZE) != 0){
+                fprintf(stderr, "Erro ao resolver o caminho\n");
+                continue;
+            }
+            
+            cmd_ls(file, &sb, bgds, resolved_path);
+
+            free(resolved_path);
             free(path_arg);
         } else if (strcmp(args[0], "pwd") == 0) {
             cmd_pwd();
