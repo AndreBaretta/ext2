@@ -1,15 +1,20 @@
 //  - Descrição:............ Código responsável por criar um shell para o sistema de arquivos EXT2
 //  - Autor:................ André Felipe Baretta, João Pedro Inoe
 //  - Data de criação:...... 29/05/2025
-//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025.
+//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025.
 
-#include <stdio.h>
+#include "../include/EXT2_Utils.h"
+#include "../include/EXT2.h"
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include "Shell.h"
 
 #define MAX_INPUT 256
 #define MAX_ARGS 10
+#define MAX_PATH_SIZE 256
 
 // Exibe informações do disco e do sistema de arquivos
 void cmd_info(void) {
@@ -37,9 +42,31 @@ int cmd_cd(const char *path) {
 }
 
 // Lista arquivos e diretórios do diretório corrente
-void cmd_ls(void) {
-    printf("Comando ls chamado\n");
-    // TODO: listar entradas do diretório corrente
+int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path) {
+    uint32_t inode_num = path_to_inode(file, sb, bgds, path);
+    
+    inode inode;
+    if(read_inode(file, &inode, sb, bgds, inode_num) != 0){
+        fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
+        fclose(file);
+        free(bgds);
+        return -1;
+    }
+
+    uint32_t offset = 0;
+
+    while(offset < inode.i_size){
+        ext2_dir_entry *entry = NULL;
+        if(read_directory_entry(file, &entry, sb, &inode, offset) != 0){
+            fprintf(stderr, "Erro ao ler diretorio\n");
+            return -1;
+        }
+        print_directory_entry(entry);
+
+        offset += entry->rec_len;
+
+        free(entry);
+    }
 }
 
 // Exibe o diretório corrente (caminho absoluto)
@@ -97,13 +124,32 @@ int cmd_mv(const char *source_path, const char *target_path) {
     return 0;
 }
 
-void shell_loop() {
+void shell_loop(FILE* file) {
     char input[MAX_INPUT];
     char *args[MAX_ARGS];
 
+    Superblock sb;
+    if(read_superblock(file, &sb) != 0){
+        fprintf(stderr, "Erro ao ler o superbloco\n");
+    }
+
+    int group_number = (sb.s_inodes_count + sb.s_inodes_per_group - 1) / sb.s_inodes_per_group;
+
+    block_group_descriptor* bgds = malloc(sizeof(block_group_descriptor) * group_number);
+
+    for(int i = 0; i < group_number; i++){
+        read_block_group_descriptor(file, &bgds[i], &sb, i);
+    }
+
+    uint32_t current_inode = 2;
+    char *current_path = malloc(sizeof(char) * MAX_PATH_SIZE);
+    strcpy(current_path, "/");
+
+
     while (1) {
         printf("ext2sh> ");
-        if (fgets(input, sizeof(input), stdin) == NULL) break;
+        if (fgets(input, sizeof(input), stdin) == NULL) 
+            break;
 
         // Remover \n
         input[strcspn(input, "\n")] = '\0';
@@ -129,7 +175,13 @@ void shell_loop() {
         } else if (strcmp(args[0], "cd") == 0 && argc == 2) {
             cmd_cd(args[1]);
         } else if (strcmp(args[0], "ls") == 0) {
-            cmd_ls();
+            char *path_arg = malloc(sizeof(char) * MAX_PATH_SIZE);
+            strcpy(path_arg, current_path);
+            if(argc >= 2){
+                strcat(path_arg, args[1]);
+            }
+            cmd_ls(file, &sb, bgds, path_arg);
+            free(path_arg);
         } else if (strcmp(args[0], "pwd") == 0) {
             cmd_pwd();
         } else if (strcmp(args[0], "touch") == 0 && argc == 2) {

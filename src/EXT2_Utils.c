@@ -1,10 +1,12 @@
 //  - Descrição:............ Código responsável por implementar as funções básicas de leitura e escrita de estruturas do sistema de arquivos EXT2
 //  - Autor:................ André Felipe Baretta, João Pedro Inoe
 //  - Data de criação:...... 29/05/2025
-//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025.
+//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025.
+
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "../include/EXT2.h"
 #include "../include/EXT2_Utils.h"
 
@@ -236,7 +238,7 @@ int read_directory_entry(FILE *file, ext2_dir_entry **entry, Superblock *sb, ino
 
     uint32_t block_number = inode->i_block[offset / block_size];
     if(block_number == 0){
-        fprintf(stderr, "Block number is 0\n");
+        fprintf(stderr, "Número de bloco é 0\n");
         return -1;
     }
     uint32_t block_position = block_number * block_size + offset % block_size;
@@ -447,4 +449,137 @@ int is_block_used(const uint8_t *bitmap, uint32_t block_number, uint32_t blocks_
 
     return is_used;
 }
+
+uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path){
+    uint32_t current_inode_num = 2; // Começa no diretório / (inode 2)
+
+    if(!strcmp(path, "/") || !strcmp(path, "\0")){
+        return current_inode_num;
+    }
+
+    // Copia o path
+    char path_copy[512];
+    strncpy(path_copy, path, sizeof(path_copy));
+    path_copy[sizeof(path_copy)-1] = '\0';
+
+    // Separa o path pelas '/'
+    char *token = strtok(path_copy, "/");
+
+    while(token != NULL){
+        inode current_inode;
+        if(read_inode(file, &current_inode, sb, bgds, current_inode_num) != 0){
+            fprintf(stderr, "Erro ao ler inode %u", current_inode_num);
+            return -1;
+        }
+
+        uint32_t offset = 0;
+        int found = 0;
+        while(offset < current_inode.i_size){
+            ext2_dir_entry *entry = NULL;
+            if(read_directory_entry(file, &entry, sb, &current_inode, offset) != 0){
+                free(entry);
+                break;
+            }
+
+            // Compara o nome do diretorio ao nome do token
+            char name[entry->name_len+1];
+            memcpy(name, entry->name, entry->name_len);
+            name[entry->name_len] = '\0';
+
+            if(strcmp(name, token) == 0){
+                current_inode_num = entry->inode;
+                found = 1;
+                free(entry);
+                break;
+            }
+
+            offset += entry->rec_len;
+            free(entry);
+        }
+
+        if(!found){
+            fprintf(stderr, "Path não encontrado: %s\n", token);
+            return -1;
+        }
+
+        token = strtok(NULL, "/");
+    }
+
+    return current_inode_num;
+}
+
+int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num, char *path, size_t max_len) {
+    if (inode_num == 2) {
+        strncpy(path, "/", max_len);
+        return 0;
+    }
+
+    char *components[128];
+    int depth = 0;
+    uint32_t current_inode_num = inode_num;
+
+    while (current_inode_num != 2 && depth < 128) {
+        inode current_inode;
+        inode parent;
+        if (read_inode(file, &current_inode, sb, bgds, current_inode_num) != 0) 
+            return -1;
+
+        // Lê '..' (segunda entrada no diretório atual)
+        ext2_dir_entry *entry;
+        if (read_directory_entry(file, &entry, sb, &current_inode, 0) != 0) 
+            return -1;
+
+        uint32_t offset = entry->rec_len;
+        free(entry);
+
+        if (read_directory_entry(file, &entry, sb, &current_inode, offset) != 0) 
+            return -1;
+        
+        uint32_t parent_inode = entry->inode;
+        free(entry);
+
+        if (read_inode(file, &parent, sb, bgds, parent_inode) != 0) 
+            return -1;
+
+        // Procura o nome do inode atual dentro do pai
+        offset = 0;
+        int found = 0;
+        while (offset < parent.i_size) {
+            if (read_directory_entry(file, &entry, sb, &parent, offset) != 0) 
+                break;
+
+            if (entry->inode == current_inode_num &&
+                strncmp(entry->name, ".", entry->name_len) != 0 &&
+                strncmp(entry->name, "..", entry->name_len) != 0) {
+
+                char *name = malloc(entry->name_len + 1);
+                memcpy(name, entry->name, entry->name_len);
+                name[entry->name_len] = '\0';
+                components[depth++] = name;
+                free(entry);
+                found = 1;
+                break;
+            }
+
+            offset += entry->rec_len;
+            free(entry);
+        }
+
+        if (!found) 
+            return -1;
+        current_inode_num = parent_inode;
+    }
+
+    // Monta caminho reverso
+    path[0] = '\0';
+    for (int i = depth - 1; i >= 0; i--) {
+        strncat(path, "/", max_len - strlen(path) - 1);
+        strncat(path, components[i], max_len - strlen(path) - 1);
+        free(components[i]);
+    }
+
+    return 0;
+}
+
+
 

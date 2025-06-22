@@ -1,7 +1,7 @@
 //  - Descrição:............ Código responsável por declarar as funções do shell
 //  - Autor:................ André Felipe Baretta, João Pedro Inoe
 //  - Data de criação:...... 29/05/2025
-//  - Datas de atualização:. 29/05/2025, 21/06/2025.
+//  - Datas de atualização:. 29/05/2025, 21/06/2025, 22/06/2025.
 
 #ifndef SHELL_H
 #define SHELL_H
@@ -11,7 +11,7 @@ void cmd_info(void);
 void cmd_cat(const char *filename);
 void cmd_attr(const char *path);
 int  cmd_cd(const char *path);
-void cmd_ls(void);
+int  cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path);
 void cmd_pwd(void);
 int  cmd_touch(const char *filename);
 int  cmd_mkdir(const char *dirname);
@@ -22,6 +22,6 @@ int  cmd_cp(const char *source_path, const char *target_path);
 int  cmd_mv(const char *source_path, const char *target_path);
 
 // Função principal do shell
-void shell_loop(void);
+void shell_loop(FILE *file);
 
 #endif
