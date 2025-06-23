@@ -584,19 +584,29 @@ int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint
     return 0;
 }
 
-int resolve_path(const char *current_path, const char *path, char **return_path, size_t max_len) {
+uint32_t resolve_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path, char **return_path, size_t max_len) {
     *return_path = malloc(sizeof(char) * max_len);
     if (*return_path == NULL) {
-        return -1;
+        return 0;
     }
 
     if (path[0] == '/') {
         strncpy(*return_path, path, max_len - 1);
         (*return_path)[max_len - 1] = '\0';
-        return 0;
+
+        uint32_t inode_num = path_to_inode(file, sb, bgds, *return_path);
+        if(inode_num == 0){
+            fprintf(stderr, "Erro ao converter path para inode");
+            return 0;
+        }
+
+        return inode_num;
     }
 
-    strncpy(*return_path, current_path, max_len - 1);
+
+    if(inode_to_path(file, sb, bgds, current_inode, *return_path, max_len) != 0){
+        fprintf(stderr, "Erro ao converter inode para path");
+    }
     (*return_path)[max_len - 1] = '\0';
 
     size_t len = strlen(*return_path);
@@ -607,7 +617,15 @@ int resolve_path(const char *current_path, const char *path, char **return_path,
     }
 
     strncat(*return_path, path, max_len - strlen(*return_path) - 1);
-    return 0;
+
+
+    uint32_t inode_num = path_to_inode(file, sb, bgds, *return_path);
+    if(inode_num == 0){
+        fprintf(stderr, "Erro ao converter path para inode");
+        return 0;
+    }
+
+    return inode_num;
 }
 
 void format_permissions(uint16_t mode, char *permissions){

@@ -32,11 +32,11 @@ void cmd_cat(const char *filename) {
 }
 
 // Exibe os atributos de um arquivo ou diretório
-int cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *current_path, const char *path) {
+int cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
     char *resolved_path;
-    resolve_path(current_path, path, &resolved_path, MAX_PATH_SIZE);
 
-    uint32_t inode_num = path_to_inode(file, sb, bgds, resolved_path);
+    uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
+    
     if (inode_num == 0) {
         fprintf(stderr, "Arquivo ou diretório não encontrado: %s\n", path);
         return -1;
@@ -79,20 +79,10 @@ int cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, const cha
 // Altera o diretório corrente para o definido em path
 int cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, char *current_path, uint32_t *current_inode) {
     char *resolved_path;
-    if(resolve_path(current_path, path, &resolved_path, MAX_PATH_SIZE) != 0){
-        fprintf(stderr, "Erro ao resolver o caminho");
-        return -1;
-    }
 
-    uint32_t inode_num = path_to_inode(file, sb, bgds, resolved_path);
+    uint32_t inode_num = resolve_path(file, sb, bgds, *current_inode, path, &resolved_path, MAX_PATH_SIZE);
     if(inode_num == 0){
-        fprintf(stderr, "Diretorio não encontrado: %s", resolved_path);
-        return -1;
-    }
-
-    if(inode_to_path(file, sb, bgds, inode_num, resolved_path, MAX_PATH_SIZE)){
-        fprintf(stderr, "Erro ao resolver inode");
-        return -1;
+        fprintf(stderr, "Diretorio nao encontrado");
     }
 
     *current_inode = inode_num;
@@ -102,12 +92,12 @@ int cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
     return 0;
 }
 
-int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path) {
-    uint32_t inode_num = path_to_inode(file, sb, bgds, path);
-    
+int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    char *resolved_path;
+
+    uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
     if(inode_num == 0){
-        fprintf(stderr, "Erro ao ler o inode");
-        return -1;
+        fprintf(stderr, "Diretorio nao encontrado");
     }
 
     inode inode;
@@ -131,6 +121,8 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
 
         free(entry);
     }
+
+    free(resolved_path);
 }
 
 // Exibe o diretório corrente (caminho absoluto)
@@ -235,7 +227,7 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "cat") == 0 && argc == 2) {
             cmd_cat(args[1]);
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
-            cmd_attr(file, &sb, bgds, current_path, args[1]);
+            cmd_attr(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "cd") == 0) {
             char *argument_path = malloc(sizeof(char) * MAX_PATH_SIZE);
             if(argc == 1){
@@ -252,18 +244,12 @@ void shell_loop(FILE *file) {
             } else{
                 path_arg[0] = '\0';
             }
-            char *resolved_path;
-            if(resolve_path(current_path, path_arg, &resolved_path, MAX_PATH_SIZE) != 0){
-                fprintf(stderr, "Erro ao resolver o caminho\n");
-                continue;
-            }
             
-            cmd_ls(file, &sb, bgds, resolved_path);
+            cmd_ls(file, &sb, bgds, current_inode, path_arg);
 
-            free(resolved_path);
             free(path_arg);
         } else if (strcmp(args[0], "pwd") == 0) {
-            cmd_pwd(current_inode);
+            cmd_pwd(current_path);
         } else if (strcmp(args[0], "touch") == 0 && argc == 2) {
             cmd_touch(args[1]);
         } else if (strcmp(args[0], "mkdir") == 0 && argc == 2) {
