@@ -7,7 +7,7 @@
 #define SHELL_H
 
 // Suas funções de comando:
-void cmd_info(void);
+int cmd_info(Superblock *sb);
 void cmd_cat(const char *filename);
 int  cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path);
 int  cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, char *current_path, uint32_t *current_inode);

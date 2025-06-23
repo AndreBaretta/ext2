@@ -20,9 +20,33 @@
 #define MAX_PATH_SIZE 256
 
 // Exibe informações do disco e do sistema de arquivos
-void cmd_info(void) {
-    printf("Comando info chamado\n");
-    // TODO: implementar leitura e exibição das informações do superbloco e outros dados do disco
+int cmd_info(Superblock *sb) {
+    if(sb == NULL)
+        return -1;
+
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint32_t inode_size = sb->s_inode_size;
+    uint32_t blocks_count = sb->s_blocks_count;
+    uint32_t free_blocks = sb->s_free_blocks_count;
+    uint32_t free_inodes = sb->s_free_inodes_count;
+    uint32_t inodes_per_group = sb->s_inodes_per_group;
+    uint32_t blocks_per_group = sb->s_blocks_per_group;
+    uint32_t group_count = (blocks_count + blocks_per_group - 1) / blocks_per_group;
+    uint32_t inode_table_blocks = (inodes_per_group * inode_size) / block_size;
+
+    printf("Volume name.....: %.16s\n", sb->s_volume_name);
+    printf("Image size......: %u bytes\n", blocks_count * block_size);
+    printf("Free space......: %u KiB\n", (free_blocks * block_size) / 1024);
+    printf("Free inodes.....: %u\n", free_inodes);
+    printf("Free blocks.....: %u\n", free_blocks);
+    printf("Block size......: %u bytes\n", block_size);
+    printf("Inode size......: %u bytes\n", inode_size);
+    printf("Groups count....: %u\n", group_count);
+    printf("Groups size.....: %u blocks\n", blocks_per_group);
+    printf("Groups inodes...: %u inodes\n", inodes_per_group);
+    printf("Inodetable size.: %u blocks\n", inode_table_blocks);
+
+    return 0;
 }
 
 // Exibe o conteúdo de um arquivo texto
@@ -223,7 +247,7 @@ void shell_loop(FILE *file) {
 
         // Mapeamento dos comandos
         if (strcmp(args[0], "info") == 0) {
-            cmd_info();
+            cmd_info(&sb);
         } else if (strcmp(args[0], "cat") == 0 && argc == 2) {
             cmd_cat(args[1]);
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
