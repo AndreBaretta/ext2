@@ -9,10 +9,10 @@
 // Suas funções de comando:
 void cmd_info(void);
 void cmd_cat(const char *filename);
-void cmd_attr(const char *path);
+int  cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *current_path, const char *path);
 int  cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, char *current_path, uint32_t *current_inode);
 int  cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path);
-void cmd_pwd(void);
+int  cmd_pwd(const char* current_path);
 int  cmd_touch(const char *filename);
 int  cmd_mkdir(const char *dirname);
 int  cmd_rm(const char *filename);

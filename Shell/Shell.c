@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <time.h>
 #include "Shell.h"
 
 #define MAX_INPUT 256
@@ -31,9 +32,48 @@ void cmd_cat(const char *filename) {
 }
 
 // Exibe os atributos de um arquivo ou diretório
-void cmd_attr(const char *path) {
-    printf("Comando attr chamado para: %s\n", path);
-    // TODO: implementar leitura dos atributos do inode (permissões, tamanho, datas etc.)
+int cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *current_path, const char *path) {
+    char *resolved_path;
+    resolve_path(current_path, path, &resolved_path, MAX_PATH_SIZE);
+
+    uint32_t inode_num = path_to_inode(file, sb, bgds, resolved_path);
+    if (inode_num == 0) {
+        fprintf(stderr, "Arquivo ou diretório não encontrado: %s\n", path);
+        return -1;
+    }
+
+    inode node;
+    if (read_inode(file, &node, sb, bgds, inode_num) != 0) {
+        fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
+        return -1;
+    }
+
+    char perms[11];
+    format_permissions(node.i_mode, perms);
+
+    char size_str[12];
+    format_size(node.i_size, size_str, sizeof(size_str));
+
+    printf("Inode: %u\n", inode_num);
+
+    printf("Permissões: %s\n", perms);
+    printf("UID: %u\n", node.i_uid);
+    printf("GID: %u\n", node.i_gid);
+    printf("Tamanho: %s\n", size_str);
+    printf("Blocos usados: %u\n", node.i_blocks);
+    printf("Links: %u\n", node.i_links_count);
+
+    // Datas
+    time_t ctime_time = (time_t)node.i_ctime;
+    time_t mtime_time = (time_t)node.i_mtime;
+    time_t atime_time = (time_t)node.i_atime;
+
+    printf("Criado em: %s", ctime(&ctime_time));
+    printf("Modificado em: %s", ctime(&mtime_time));
+    printf("Acessado em: %s", ctime(&atime_time));
+
+    free(resolved_path);
+    return 0;
 }
 
 // Altera o diretório corrente para o definido em path
@@ -94,9 +134,9 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
 }
 
 // Exibe o diretório corrente (caminho absoluto)
-void cmd_pwd(void) {
-    printf("Comando pwd chamado\n");
-    // TODO: imprimir caminho absoluto do diretório atual
+int cmd_pwd(const char *current_path) {
+    printf("%s\n", current_path);
+    return 0;
 }
 
 // Cria um arquivo vazio com o nome file
@@ -195,7 +235,7 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "cat") == 0 && argc == 2) {
             cmd_cat(args[1]);
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
-            cmd_attr(args[1]);
+            cmd_attr(file, &sb, bgds, current_path, args[1]);
         } else if (strcmp(args[0], "cd") == 0) {
             char *argument_path = malloc(sizeof(char) * MAX_PATH_SIZE);
             if(argc == 1){
@@ -223,7 +263,7 @@ void shell_loop(FILE *file) {
             free(resolved_path);
             free(path_arg);
         } else if (strcmp(args[0], "pwd") == 0) {
-            cmd_pwd();
+            cmd_pwd(current_inode);
         } else if (strcmp(args[0], "touch") == 0 && argc == 2) {
             cmd_touch(args[1]);
         } else if (strcmp(args[0], "mkdir") == 0 && argc == 2) {

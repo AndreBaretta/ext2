@@ -6,6 +6,7 @@
 
 #include "../include/EXT2_Utils.h"
 #include "../include/EXT2.h"
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -607,6 +608,40 @@ int resolve_path(const char *current_path, const char *path, char **return_path,
 
     strncat(*return_path, path, max_len - strlen(*return_path) - 1);
     return 0;
+}
+
+void format_permissions(uint16_t mode, char *permissions){
+    permissions[0] = S_ISDIR(mode) ? 'd' :
+                     S_ISREG(mode) ? 'f' :
+                     S_ISLNK(mode) ? 'l' :
+                     S_ISCHR(mode) ? 'c' :
+                     S_ISBLK(mode) ? 'b' :
+                     S_ISFIFO(mode) ? 'p' :
+                     S_ISSOCK(mode) ? 's' : '?';
+
+    permissions[1] = (mode & S_IRUSR) ? 'r' : '-';
+    permissions[2] = (mode & S_IWUSR) ? 'w' : '-';
+    permissions[3] = (mode & S_IXUSR) ? 'x' : '-';
+    permissions[4] = (mode & S_IRGRP) ? 'r' : '-';
+    permissions[5] = (mode & S_IWGRP) ? 'w' : '-';
+    permissions[6] = (mode & S_IXGRP) ? 'x' : '-';
+    permissions[7] = (mode & S_IROTH) ? 'r' : '-';
+    permissions[8] = (mode & S_IWOTH) ? 'w' : '-';
+    permissions[9] = (mode & S_IXOTH) ? 'x' : '-';
+    permissions[10] = '\0';
+}
+
+void format_size(uint32_t size, char *output, size_t str_len){
+    const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+    int unit_index = 0;
+    double size_double = (double)size;
+
+    while (size_double >= 1024.0 && unit_index < 4) {
+        size_double /= 1024.0;
+        unit_index++;
+    }
+
+    snprintf(output, str_len, "%.2f %s", size_double, units[unit_index]);
 }
 
 
