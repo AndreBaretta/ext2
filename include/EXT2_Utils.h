@@ -30,7 +30,7 @@ int write_block_bitmap(FILE *file, const uint8_t *bitmap, Superblock *sb, block_
 
 // Funções de print
 void print_superblock(Superblock *sb);
-void print_uuid(const char uuid[16]);
+void print_uuid(const uint8_t uuid[16]);
 void print_block_group_descriptor(block_group_descriptor *bgd, uint32_t number);
 void print_inode(inode *inode, uint32_t number);
 void print_directory_entry(ext2_dir_entry *entry);

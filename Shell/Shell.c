@@ -121,13 +121,14 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
 
     uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
     if(inode_num == 0){
-        fprintf(stderr, "Diretorio nao encontrado");
+        fprintf(stderr, "Diretorio nao encontrado\n");
+        return -1;  // Retornar um código de erro se o diretório não for encontrado
     }
 
     inode inode;
     if(read_inode(file, &inode, sb, bgds, inode_num) != 0){
         fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
-        return -1;
+        return -1;  // Retornar código de erro se falhar ao ler o inode
     }
 
     uint32_t offset = 0;
@@ -136,7 +137,7 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         ext2_dir_entry *entry = NULL;
         if(read_directory_entry(file, &entry, sb, &inode, offset) != 0){
             fprintf(stderr, "Erro ao ler diretorio\n");
-            return -1;
+            return -1;  // Retornar código de erro se falhar ao ler a entrada do diretório
         }
 
         print_directory_entry(entry);
@@ -147,6 +148,8 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
     }
 
     free(resolved_path);
+
+    return 0;  // Retornar 0 para indicar sucesso
 }
 
 // Exibe o diretório corrente (caminho absoluto)

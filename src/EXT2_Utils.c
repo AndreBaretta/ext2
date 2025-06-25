@@ -40,7 +40,7 @@ int write_superblock(FILE *file, Superblock *sb){
     return 0;
 }
 
-void print_uuid(const char uuid[16]) {
+void print_uuid(const uint8_t uuid[16]) {
     for (int i = 0; i < 16; i++) {
         printf("%02x", (unsigned char)uuid[i]);
     }
@@ -80,7 +80,7 @@ void print_superblock(Superblock *sb){
     printf("Feature incompat: %d\n", sb->s_feature_incompat);
     printf("Feature ro compat: %d\n", sb->s_feature_ro_compat);
     printf("Volume UUID: ");
-    print_uuid(sb->s_uuid);
+    print_uuid( (const uint8_t*) sb->s_uuid);
     printf("Volume name: %s\n", sb->s_volume_name);
     printf("Last mounted: %s\n", sb->s_last_mounted);
     printf("Algo bitmap: %d\n", sb->s_algo_bitmap);
@@ -88,7 +88,7 @@ void print_superblock(Superblock *sb){
     printf("Prealloc dir blocks: %d\n", sb->s_prealloc_dir_blocks);
     printf("Padding: %d\n", sb->s_padding1);
     printf("Journal UUID: ");
-    print_uuid(sb->s_journal_uuid);
+    print_uuid( (const uint8_t*) sb->s_journal_uuid);
     printf("Journal inum: %d\n", sb->s_journal_inum);
 }
 
