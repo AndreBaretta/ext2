@@ -6,6 +6,7 @@
 #include "../include/EXT2_Utils.h"
 #include "../include/EXT2.h"
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -50,9 +51,96 @@ int cmd_info(Superblock *sb) {
 }
 
 // Exibe o conteúdo de um arquivo texto
-void cmd_cat(const char *filename) {
-    printf("Comando cat chamado para arquivo: %s\n", filename);
-    // TODO: implementar leitura do conteúdo do arquivo e exibição no terminal
+int cmd_cat(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    char *resolved_path;
+    uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
+    
+    if (inode_num == 0) {
+        fprintf(stderr, "cat: Arquivo não encontrado: %s\n", path);
+        return -1;
+    }
+
+    inode node;
+    if (read_inode(file, &node, sb, bgds, inode_num) != 0) {
+        fprintf(stderr, "cat: Erro ao ler inode %u\n", inode_num);
+        return -1;
+    }
+
+    // verifica se é arquivo regular
+    if ((node.i_mode & S_IFMT) != S_IFREG) {
+        fprintf(stderr, "cat: %s não é um arquivo regular\n", path);
+        return -1;
+    }
+
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint32_t size_left = node.i_size;
+    char *buffer = malloc(block_size);
+
+    // Blocos diretos
+    for (int i = 0; i < 12 && size_left > 0; i++) {
+        uint32_t blk = node.i_block[i];
+        if (read_and_print_block(file, blk, buffer, block_size, &size_left) != 0) break;
+    }
+
+    // Indireto simples
+    if (size_left > 0 && node.i_block[12]) {
+        uint32_t *indirect = malloc(block_size);
+        read_block(file, indirect, node.i_block[12], block_size);
+
+        for (uint32_t i = 0; i < block_size / 4 && size_left > 0; i++) {
+            uint32_t blk = indirect[i];
+            if (read_and_print_block(file, blk, buffer, block_size, &size_left) != 0) break;
+        }
+        free(indirect);
+    }
+
+    // Indireto duplo
+    if (size_left > 0 && node.i_block[13]) {
+        uint32_t *double_indirect = malloc(block_size);
+        read_block(file, double_indirect, node.i_block[13], block_size);
+
+        for (uint32_t i = 0; i < block_size / 4 && size_left > 0; i++) {
+            if (!double_indirect[i]) continue;
+            uint32_t *indirect = malloc(block_size);
+            read_block(file, indirect, double_indirect[i], block_size);
+
+            for (uint32_t j = 0; j < block_size / 4 && size_left > 0; j++) {
+                uint32_t blk = indirect[j];
+                if (read_and_print_block(file, blk, buffer, block_size, &size_left) != 0) break;
+            }
+            free(indirect);
+        }
+        free(double_indirect);
+    }
+
+    // Indireto triplo
+    if (size_left > 0 && node.i_block[14]) {
+        uint32_t *triple_indirect = malloc(block_size);
+        read_block(file, triple_indirect, node.i_block[14], block_size);
+
+        for (uint32_t i = 0; i < block_size / 4 && size_left > 0; i++) {
+            if (!triple_indirect[i]) continue;
+            uint32_t *double_indirect = malloc(block_size);
+            read_block(file, double_indirect, triple_indirect[i], block_size);
+
+            for (uint32_t j = 0; j < block_size / 4 && size_left > 0; j++) {
+                if (!double_indirect[j]) continue;
+                uint32_t *indirect = malloc(block_size);
+                read_block(file, indirect, double_indirect[j], block_size);
+
+                for (uint32_t k = 0; k < block_size / 4 && size_left > 0; k++) {
+                    uint32_t blk = indirect[k];
+                    if (read_and_print_block(file, blk, buffer, block_size, &size_left) != 0) break;
+                }
+                free(indirect);
+            }
+            free(double_indirect);
+        }
+        free(triple_indirect);
+    }
+
+    free(buffer);
+    return 0;
 }
 
 // Exibe os atributos de um arquivo ou diretório
@@ -103,14 +191,30 @@ int cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t 
 // Altera o diretório corrente para o definido em path
 int cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, char *current_path, uint32_t *current_inode) {
     char *resolved_path;
-
     uint32_t inode_num = resolve_path(file, sb, bgds, *current_inode, path, &resolved_path, MAX_PATH_SIZE);
-    if(inode_num == 0){
-        fprintf(stderr, "Diretorio nao encontrado");
+
+    if (inode_num == 0) {
+        fprintf(stderr, "cd: O diretorio '%s' nao foi encontrado.\n", path);
+        return -1;
     }
 
+    inode target_inode;
+    if (read_inode(file, &target_inode, sb, bgds, inode_num) != 0) {
+        fprintf(stderr, "cd: Erro critico ao ler o inode %u.\n", inode_num);
+        free(resolved_path);
+        return -1;
+    }
+
+    if (!S_ISDIR(target_inode.i_mode)) {
+        fprintf(stderr, "cd: '%s' nao e um diretorio.\n", path);
+        free(resolved_path);
+        return -1;
+    }
+
+    // se todas as verificações passaram, atualize o estado do shell
     *current_inode = inode_num;
-    strcpy(current_path, resolved_path);
+    strncpy(current_path, resolved_path, MAX_PATH_SIZE);
+    current_path[MAX_PATH_SIZE - 1] = '\0';
 
     free(resolved_path);
     return 0;
@@ -120,33 +224,43 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
     char *resolved_path;
 
     uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
-    if(inode_num == 0){
-        fprintf(stderr, "Diretorio nao encontrado");
+
+    if (inode_num == 0) {
+        fprintf(stderr, "ls: O diretorio '%s' nao foi encontrado.\n", path);
+        return -1;
     }
 
-    inode inode;
-    if(read_inode(file, &inode, sb, bgds, inode_num) != 0){
-        fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
+    inode dir_inode;
+    if (read_inode(file, &dir_inode, sb, bgds, inode_num) != 0) {
+        fprintf(stderr, "ls: Erro ao ler o inode %u\n", inode_num);
+        free(resolved_path);
+        return -1;
+    }
+
+    free(resolved_path);
+
+    if (!is_inode_dir(&dir_inode)) {
+        fprintf(stderr, "ls: '%s' nao e um diretorio.\n", path);
         return -1;
     }
 
     uint32_t offset = 0;
-
-    while(offset < inode.i_size){
+    while (offset < dir_inode.i_size) {
         ext2_dir_entry *entry = NULL;
-        if(read_directory_entry(file, &entry, sb, &inode, offset) != 0){
-            fprintf(stderr, "Erro ao ler diretorio\n");
+        if (read_directory_entry(file, &entry, sb, &dir_inode, offset) != 0) {
+            fprintf(stderr, "ls: Erro ao ler entrada de diretorio no offset %u\n", offset);
             return -1;
         }
 
-        print_directory_entry(entry);
+        if (entry->inode != 0) {
+            print_directory_entry(entry);
+        }
 
         offset += entry->rec_len;
-
         free(entry);
     }
 
-    free(resolved_path);
+    return 0;
 }
 
 // Exibe o diretório corrente (caminho absoluto)
@@ -156,10 +270,163 @@ int cmd_pwd(const char *current_path) {
 }
 
 // Cria um arquivo vazio com o nome file
-int cmd_touch(const char *filename) {
-    printf("Comando touch chamado para arquivo: %s\n", filename);
-    // TODO: criar arquivo vazio
-    return 0;
+int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    char *full_path = malloc(MAX_PATH_SIZE);
+    if (!full_path) {
+        perror("touch: Falha ao alocar memoria");
+        return -1;
+    }
+
+    if (path[0] == '/') {
+        strncpy(full_path, path, MAX_PATH_SIZE);
+    } else {
+        char current_path[MAX_PATH_SIZE];
+        if (inode_to_path(file, sb, bgds, current_inode, current_path, MAX_PATH_SIZE) != 0) {
+            if (current_inode == 2) {
+                strcpy(current_path, "/");
+            } else {
+                fprintf(stderr, "touch: Nao foi possivel determinar o caminho atual.\n");
+                free(full_path);
+                return -1;
+            }
+        }
+        if (strcmp(current_path, "/") == 0) {
+            snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
+        } else {
+            snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path, path);
+        }
+    }
+
+    uint32_t target_inode_num = path_to_inode(file, sb, bgds, full_path, 2);
+    if (target_inode_num != 0) {
+        fprintf(stderr, "touch: Arquivo ou diretorio ja existe: %s\n", full_path);
+        free(full_path);
+        return -1;
+    }
+
+    char parent_path[MAX_PATH_SIZE];
+    const char *filename_ptr;
+    char *last_slash = strrchr(full_path, '/');
+
+    if (last_slash == NULL || strlen(filename_ptr = last_slash + 1) == 0 || strlen(filename_ptr) > 255) {
+        fprintf(stderr, "touch: Caminho ou nome de arquivo invalido.\n");
+        free(full_path);
+        return -1;
+    }
+
+    char filename[256];
+    strncpy(filename, filename_ptr, 255);
+    filename[255] = '\0';
+
+    if (last_slash == full_path) {
+        strncpy(parent_path, "/", MAX_PATH_SIZE);
+    } else {
+        *last_slash = '\0';
+        strncpy(parent_path, full_path, MAX_PATH_SIZE);
+    }
+    
+    // agora podemos liberar full_path com segurança, pois já copiamos o nome do arquivo
+    free(full_path);
+
+    uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
+    if (parent_inode_num == 0) {
+        fprintf(stderr, "touch: O diretorio pai '%s' nao existe.\n", parent_path);
+        return -1;
+    }
+
+    inode parent_inode;
+    read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+    if (!is_inode_dir(&parent_inode)) {
+        fprintf(stderr, "touch: O caminho '%s' nao e um diretorio.\n", parent_path);
+        return -1;
+    }
+
+    uint32_t group = (parent_inode_num - 1) / sb->s_inodes_per_group;
+    uint8_t inode_bitmap[sb->s_inodes_per_group / 8];
+    read_inode_bitmap(file, inode_bitmap, sb, bgds, group);
+
+    uint32_t new_inode_num = 0;
+    for (uint32_t i = 0; i < sb->s_inodes_per_group; i++) {
+        uint32_t potential_inode_num = group * sb->s_inodes_per_group + i + 1;
+        if (potential_inode_num > sb->s_first_ino && !is_inode_used(inode_bitmap, i + 1, sb->s_inodes_per_group)) {
+            inode_bitmap[i / 8] |= (1 << (i % 8));
+            new_inode_num = potential_inode_num;
+            break;
+        }
+    }
+
+    if (new_inode_num == 0) {
+        fprintf(stderr, "touch: Nao ha inodes livres no grupo do diretorio pai.\n");
+        return -1;
+    }
+
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint32_t offset = 0;
+    while (offset < parent_inode.i_size) {
+        uint32_t entry_offset = offset;
+        ext2_dir_entry *entry;
+        if(read_directory_entry(file, &entry, sb, &parent_inode, offset) != 0) {
+            break;
+        }
+
+        uint16_t ideal_len_entry = 8 + ((entry->name_len + 3) & ~3);
+        uint16_t required_len_new = 8 + ((strlen(filename) + 3) & ~3);
+
+        if (entry->inode != 0 && entry->rec_len >= ideal_len_entry + required_len_new) {
+            uint16_t original_rec_len = entry->rec_len;
+            
+            entry->rec_len = ideal_len_entry;
+            write_directory_entry(file, entry, sb, &parent_inode, entry_offset);
+            
+            uint32_t new_entry_offset = entry_offset + ideal_len_entry;
+            uint16_t new_entry_rec_len = original_rec_len - ideal_len_entry;
+            
+            ext2_dir_entry *new_file_entry = calloc(1, new_entry_rec_len);
+            if (!new_file_entry) {
+                // simplificação: não fazemos um rollback
+                free(entry);
+                return -1;
+            }
+            
+            new_file_entry->inode = new_inode_num;
+            new_file_entry->rec_len = new_entry_rec_len;
+            new_file_entry->name_len = strlen(filename);
+            new_file_entry->file_type = 1; // EXT2_FT_REG_FILE
+            memcpy(new_file_entry->name, filename, new_file_entry->name_len);
+
+            write_directory_entry(file, new_file_entry, sb, &parent_inode, new_entry_offset);
+            free(new_file_entry);
+            free(entry);
+
+            inode new_file_inode = {0};
+            new_file_inode.i_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+            new_file_inode.i_links_count = 1;
+            new_file_inode.i_size = 0; // arquivo vazio
+            new_file_inode.i_blocks = 0; // não ocupa blocos de dados ainda.
+            new_file_inode.i_ctime = new_file_inode.i_mtime = new_file_inode.i_atime = time(NULL);
+            write_inode(file, &new_file_inode, sb, bgds, new_inode_num);
+
+            write_inode_bitmap(file, inode_bitmap, sb, bgds, group);
+            
+            parent_inode.i_mtime = time(NULL);
+            write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+            
+            bgds[group].bg_free_inodes_count--;
+            write_block_group_descriptor(file, &bgds[group], sb, group);
+            
+            sb->s_free_inodes_count--;
+            write_superblock(file, sb);
+            
+            printf("Arquivo '%s' criado.\n", filename);
+            return 0;
+        }
+        
+        offset += entry->rec_len;
+        free(entry);
+    }
+    
+    fprintf(stderr, "touch: Nao ha espaco nos blocos de dados do diretorio '%s' para criar novo arquivo.\n", parent_path);
+    return -1;
 }
 
 // Cria um diretório vazio com o nome dir
@@ -227,6 +494,7 @@ void shell_loop(FILE *file) {
 
 
     while (1) {
+        inode_to_path(file, &sb, bgds, current_inode, current_path, MAX_PATH_SIZE);
         printf("[%s] ", current_path);
         if (fgets(input, sizeof(input), stdin) == NULL) 
             break;
@@ -249,33 +517,20 @@ void shell_loop(FILE *file) {
         if (strcmp(args[0], "info") == 0) {
             cmd_info(&sb);
         } else if (strcmp(args[0], "cat") == 0 && argc == 2) {
-            cmd_cat(args[1]);
+            cmd_cat(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
             cmd_attr(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "cd") == 0) {
-            char *argument_path = malloc(sizeof(char) * MAX_PATH_SIZE);
-            if(argc == 1){
-                strcpy(argument_path, "/");
-            } else{
-                strcpy(argument_path, args[1]);
-            } 
-            cmd_cd(file, &sb, bgds, argument_path, current_path, &current_inode);
-            free(argument_path);
+            char *path_arg = (argc > 1) ? args[1] : "";
+            cmd_cd(file, &sb, bgds, path_arg, current_path, &current_inode);
+        
         } else if (strcmp(args[0], "ls") == 0) {
-            char *path_arg = malloc(sizeof(char) * MAX_PATH_SIZE);
-            if(argc >= 2){
-                strcpy(path_arg, args[1]);
-            } else{
-                path_arg[0] = '\0';
-            }
-            
+            char *path_arg = (argc > 1) ? args[1] : "";
             cmd_ls(file, &sb, bgds, current_inode, path_arg);
-
-            free(path_arg);
         } else if (strcmp(args[0], "pwd") == 0) {
             cmd_pwd(current_path);
         } else if (strcmp(args[0], "touch") == 0 && argc == 2) {
-            cmd_touch(args[1]);
+            cmd_touch(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "mkdir") == 0 && argc == 2) {
             cmd_mkdir(args[1]);
         } else if (strcmp(args[0], "rm") == 0 && argc == 2) {
