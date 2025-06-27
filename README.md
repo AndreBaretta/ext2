@@ -1,6 +1,6 @@
 <div style="width: 100%; text-align: center;">
-<img src="Img/tux.png" alt="descrição" width="80"/>
-<img src="Img/C.png" alt="descrição" width="80"/>
+<img src="Img/tux.png" alt="descrição" width="100"/>
+<img src="Img/C.png" alt="descrição" width="90"/>
 <img src="Img/gnu.png" alt="descrição" width="100"/>
 </div>
 
