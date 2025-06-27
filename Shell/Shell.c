@@ -430,9 +430,168 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 }
 
 // Cria um diretório vazio com o nome dir
-int cmd_mkdir(const char *dirname) {
-    printf("Comando mkdir chamado para diretório: %s\n", dirname);
-    // TODO: criar diretório vazio
+int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // resolve e valida caminhos
+    char full_path[MAX_PATH_SIZE];
+    if (path[0] == '/') {
+        strncpy(full_path, path, MAX_PATH_SIZE);
+    } else {
+        char current_path_str[MAX_PATH_SIZE];
+        inode_to_path(file, sb, bgds, current_inode, current_path_str, MAX_PATH_SIZE);
+        if (strcmp(current_path_str, "/") == 0) 
+            snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
+        else 
+            snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path_str, path);
+    }
+
+    if (path_to_inode(file, sb, bgds, full_path, 2) != 0) {
+        fprintf(stderr, "mkdir: Nao foi possivel criar o diretorio '%s': Arquivo ou diretorio ja existe\n", path);
+        return -1;
+    }
+
+    char parent_path[MAX_PATH_SIZE];
+    char new_dir_name[256];
+    char *last_slash = strrchr(full_path, '/');
+    if (last_slash == NULL || strlen(last_slash + 1) == 0) {
+        fprintf(stderr, "mkdir: Caminho invalido\n");
+        return -1;
+    }
+    strncpy(new_dir_name, last_slash + 1, 255);
+    new_dir_name[255] = '\0';
+    if (last_slash == full_path) 
+        strcpy(parent_path, "/");
+    else { 
+        *last_slash = '\0'; 
+        strcpy(parent_path, full_path); 
+    }
+
+    uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
+    inode parent_inode;
+    read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+
+    // alocar recursos (inode e blocos)
+    uint32_t group = (parent_inode_num - 1) / sb->s_inodes_per_group;
+    
+    // alocar inode
+    uint8_t inode_bitmap[sb->s_inodes_per_group / 8];
+    read_inode_bitmap(file, inode_bitmap, sb, bgds, group);
+    uint32_t new_inode_num = 0;
+    for (uint32_t i = 0; i < sb->s_inodes_per_group; i++) {
+        if (!is_inode_used(inode_bitmap, i + 1, sb->s_inodes_per_group)) {
+            inode_bitmap[i / 8] |= (1 << (i % 8));
+            new_inode_num = group * sb->s_inodes_per_group + i + 1;
+            break;
+        }
+    }
+    if (new_inode_num == 0) { 
+        fprintf(stderr, "mkdir: Nao ha inodes livres\n"); 
+        return -1; 
+    }
+
+    // alocar bloco de dados
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint8_t block_bitmap[block_size];
+    read_block_bitmap(file, block_bitmap, sb, bgds, group);
+    uint32_t new_block_num = 0;
+    for (uint32_t i = 0; i < sb->s_blocks_per_group; i++) {
+        if (!is_block_used(block_bitmap, i + 1, sb->s_blocks_per_group)) {
+            block_bitmap[i / 8] |= (1 << (i % 8));
+            new_block_num = group * sb->s_blocks_per_group + i + sb->s_first_data_block;
+            break;
+        }
+    }
+    if (new_block_num == 0) { 
+        fprintf(stderr, "mkdir: Nao ha blocos de dados livres\n"); 
+        return -1; 
+    }
+
+
+    // cria o inode do novo diretorio
+    inode new_dir_inode = {0};
+    new_dir_inode.i_mode = S_IFDIR | 0755; // wxr-xr-x
+    new_dir_inode.i_links_count = 2;       // entradas . e ..
+    new_dir_inode.i_size = block_size;
+    new_dir_inode.i_blocks = block_size / 512;
+    new_dir_inode.i_atime = new_dir_inode.i_ctime = new_dir_inode.i_mtime = time(NULL);
+    new_dir_inode.i_block[0] = new_block_num;
+
+    // cria entrada para . e ..
+    char *block_buffer = calloc(1, block_size);
+        // cria entrada para .
+    ext2_dir_entry *self_entry = (ext2_dir_entry*)block_buffer;
+    self_entry->inode = new_inode_num;
+    self_entry->name_len = 1;
+    self_entry->file_type = 2; // EXT2_FT_DIR
+    self_entry->rec_len = 12; // Tamanho ideal para esta entrada
+    strcpy(self_entry->name, ".");
+    
+        // cria entrada para ..
+    ext2_dir_entry *parent_entry = (ext2_dir_entry*)(block_buffer + self_entry->rec_len);
+    parent_entry->inode = parent_inode_num;
+    parent_entry->name_len = 2;
+    parent_entry->file_type = 2; // EXT2_FT_DIR
+    parent_entry->rec_len = block_size - self_entry->rec_len; // preenche o resto do bloco
+    strcpy(parent_entry->name, "..");
+    
+    // escreve o bloco de dados criado
+    write_block(file, block_buffer, new_block_num, block_size);
+    free(block_buffer);
+
+    // adiciona entrada no diretorio pai
+    uint32_t offset = 0;
+    int space_found = 0;
+    while (offset < parent_inode.i_size) {
+        ext2_dir_entry *entry;
+        read_directory_entry(file, &entry, sb, &parent_inode, offset);
+        uint16_t ideal_len_entry = 8 + ((entry->name_len + 3) & ~3);
+        uint16_t required_len_new = 8 + ((strlen(new_dir_name) + 3) & ~3);
+
+        if (entry->inode != 0 && entry->rec_len >= ideal_len_entry + required_len_new) {
+            uint16_t original_rec_len = entry->rec_len;
+            entry->rec_len = ideal_len_entry;
+            write_directory_entry(file, entry, sb, &parent_inode, offset);
+            
+            uint16_t new_entry_rec_len = original_rec_len - ideal_len_entry;
+            ext2_dir_entry *new_dir_entry = calloc(1, new_entry_rec_len);
+            new_dir_entry->inode = new_inode_num;
+            new_dir_entry->rec_len = new_entry_rec_len;
+            new_dir_entry->name_len = strlen(new_dir_name);
+            new_dir_entry->file_type = 2; // EXT2_FT_DIR
+            memcpy(new_dir_entry->name, new_dir_name, new_dir_entry->name_len);
+            write_directory_entry(file, new_dir_entry, sb, &parent_inode, offset + ideal_len_entry);
+            
+            free(new_dir_entry);
+            space_found = 1;
+            break;
+        }
+        offset += entry->rec_len;
+        free(entry);
+    }
+    if (!space_found) { 
+        fprintf(stderr, "mkdir: Nao ha espaco no diretorio pai\n");
+        return -1; 
+    }
+
+    // inode do pai: aumenta links_count e atualiza data de modifição
+    parent_inode.i_links_count++;
+    parent_inode.i_mtime = time(NULL);
+    write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+
+    // escreve inode novo, bitmaps e atualizar contadores
+    write_inode(file, &new_dir_inode, sb, bgds, new_inode_num);
+    write_inode_bitmap(file, inode_bitmap, sb, bgds, group);
+    write_block_bitmap(file, block_bitmap, sb, bgds, group);
+
+    sb->s_free_inodes_count--;
+    sb->s_free_blocks_count--;
+    write_superblock(file, sb);
+    
+    bgds[group].bg_free_inodes_count--;
+    bgds[group].bg_free_blocks_count--;
+    bgds[group].bg_used_dirs_count++;
+    write_block_group_descriptor(file, &bgds[group], sb, group);
+
+    printf("Diretorio '%s' criado.\n", new_dir_name);
     return 0;
 }
 
@@ -521,9 +680,12 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
             cmd_attr(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "cd") == 0) {
-            char *path_arg = (argc > 1) ? args[1] : "";
+            if(argc == 1){
+                current_inode = 2;
+                continue;
+            }
+            char *path_arg = args[1];
             cmd_cd(file, &sb, bgds, path_arg, current_path, &current_inode);
-        
         } else if (strcmp(args[0], "ls") == 0) {
             char *path_arg = (argc > 1) ? args[1] : "";
             cmd_ls(file, &sb, bgds, current_inode, path_arg);
@@ -532,7 +694,7 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "touch") == 0 && argc == 2) {
             cmd_touch(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "mkdir") == 0 && argc == 2) {
-            cmd_mkdir(args[1]);
+            cmd_mkdir(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "rm") == 0 && argc == 2) {
             cmd_rm(args[1]);
         } else if (strcmp(args[0], "rmdir") == 0 && argc == 2) {
