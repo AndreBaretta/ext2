@@ -38,10 +38,12 @@ void print_directory_entry(ext2_dir_entry *entry);
 // Funções auxiliares
 int is_inode_used(const uint8_t *bitmap, uint32_t inode_number, uint32_t inodes_per_group);
 int is_block_used(const uint8_t *bitmap, uint32_t block_number, uint32_t blocks_per_group);
-uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path);
+uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, uint32_t start_inode_num);
 int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num, char *path, size_t max_len);
 uint32_t resolve_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path, char **return_path, size_t max_len);
 void format_permissions(uint16_t mode, char *permissions);
 void format_size(uint32_t size, char *output, size_t str_len);
+int read_and_print_block(FILE *file, uint32_t block, uint8_t *buffer, uint32_t block_size, uint32_t *size_left);
+int is_inode_dir(const inode *node); // retorna 1 se o inode for um diretorio e 0 se não for
 
 #endif

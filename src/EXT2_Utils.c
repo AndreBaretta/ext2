@@ -239,7 +239,6 @@ int read_directory_entry(FILE *file, ext2_dir_entry **entry, Superblock *sb, ino
 
     uint32_t block_number = inode->i_block[offset / block_size];
     if(block_number == 0){
-        fprintf(stderr, "Número de bloco é 0\n");
         return -1;
     }
     uint32_t block_position = block_number * block_size + offset % block_size;
@@ -301,6 +300,7 @@ int write_directory_entry(FILE *file, ext2_dir_entry *entry, Superblock *sb, ino
 
 void print_directory_entry(ext2_dir_entry *entry){
     printf("%.*s\n", entry->name_len, entry->name);
+    printf("tamanho do nome: %u\n", entry->name_len);
     printf("Inode: %d\n", entry->inode);
     printf("Tipo: %d\n", entry->file_type);
     printf("Tamanho: %d\n", entry->rec_len);
@@ -451,65 +451,94 @@ int is_block_used(const uint8_t *bitmap, uint32_t block_number, uint32_t blocks_
     return is_used;
 }
 
-uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path){
-    uint32_t current_inode_num = 2; // Começa no diretório / (inode 2)
+uint32_t path_to_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *path, uint32_t start_inode_num){
+    uint32_t current_inode_num = start_inode_num;
 
-    if(!strcmp(path, "/") || !strcmp(path, "\0")){
-        return current_inode_num;
+    // lida com caminhos vazios ou que são apenas a raiz
+    if (path == NULL || path[0] == '\0') {
+        return start_inode_num;
+    }
+    if (strcmp(path, "/") == 0) {
+        return 2; // retorna o inode da raiz
     }
 
-    // Copia o path
+    // copia o path para não modificar o original
     char path_copy[512];
     strncpy(path_copy, path, sizeof(path_copy));
-    path_copy[sizeof(path_copy)-1] = '\0';
+    path_copy[sizeof(path_copy) - 1] = '\0';
 
-    // Separa o path pelas '/'
     char *token = strtok(path_copy, "/");
 
     while(token != NULL){
+        // pula tokens vazios que podem ocorrer com barras duplas (ex: /dir//arquivo.txt)
+        if (strlen(token) == 0) {
+            token = strtok(NULL, "/");
+            continue;
+        }
+
         inode current_inode;
         if(read_inode(file, &current_inode, sb, bgds, current_inode_num) != 0){
-            fprintf(stderr, "Erro ao ler inode %u", current_inode_num);
+            fprintf(stderr, "Erro ao ler inode %u\n", current_inode_num);
+            return 0; // Retorna 0 em caso de erro (inode inválido)
+        }
+
+        // checa se o inode atual é um diretório antes de continuar.
+        if (!S_ISDIR(current_inode.i_mode)) {
+            fprintf(stderr, "Nao e um diretorio: %s\n", token);
             return 0;
         }
+        
+        // trata os casos . e ..
+        if (strcmp(token, ".") == 0) {
+            // . significa o diretório atual, logo não fazemos nada
+        } else {
+            uint32_t offset = 0;
+            int found = 0;
+            while(offset < current_inode.i_size){
+                ext2_dir_entry *entry = NULL;
+                // a leitura da entrada de diretório já é tratada dentro da função
+                if(read_directory_entry(file, &entry, sb, &current_inode, offset) != 0){
+                    free(entry);
+                    break;
+                }
 
-        uint32_t offset = 0;
-        int found = 0;
-        while(offset < current_inode.i_size){
-            ext2_dir_entry *entry = NULL;
-            if(read_directory_entry(file, &entry, sb, &current_inode, offset) != 0){
+                if (entry->inode != 0) {
+                    char name[entry->name_len + 1];
+                    memcpy(name, entry->name, entry->name_len);
+                    name[entry->name_len] = '\0';
+
+                    // compara o nome do token com a entrada do diretório
+                    if (strcmp(name, token) == 0) {
+                        current_inode_num = entry->inode;
+                        found = 1;
+                        free(entry);
+                        break;
+                    }
+                }
+                offset += entry->rec_len;
                 free(entry);
-                break;
             }
 
-            // Compara o nome do diretorio ao nome do token
-            char name[entry->name_len+1];
-            memcpy(name, entry->name, entry->name_len);
-            name[entry->name_len] = '\0';
-
-            if(strcmp(name, token) == 0){
-                current_inode_num = entry->inode;
-                found = 1;
-                free(entry);
-                break;
+            if(!found){
+                return 0; // retorna 0 se o inode do caminho não for encontrado
             }
-
-            offset += entry->rec_len;
-            free(entry);
         }
-
-        if(!found){
-            fprintf(stderr, "Path não encontrado: %s\n", token);
-            return 0;
-        }
-
         token = strtok(NULL, "/");
     }
-
     return current_inode_num;
 }
 
 int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num, char *path, size_t max_len) {
+    inode target_inode;
+    if (read_inode(file, &target_inode, sb, bgds, inode_num) != 0) {
+        fprintf(stderr, "inode_to_path: nao foi possivel ler o inode %u\n", inode_num);
+        return -1;
+    }
+
+    if (!S_ISDIR(target_inode.i_mode) && inode_num != 2) {
+        return -1;
+    }
+    
     if (inode_num == 2) {
         strncpy(path, "/", max_len);
         return 0;
@@ -585,47 +614,32 @@ int inode_to_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint
 }
 
 uint32_t resolve_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path, char **return_path, size_t max_len) {
-    *return_path = malloc(sizeof(char) * max_len);
-    if (*return_path == NULL) {
-        return 0;
-    }
+    uint32_t final_inode;
 
     if (path[0] == '/') {
-        strncpy(*return_path, path, max_len - 1);
-        (*return_path)[max_len - 1] = '\0';
-
-        uint32_t inode_num = path_to_inode(file, sb, bgds, *return_path);
-        if(inode_num == 0){
-            fprintf(stderr, "Erro ao converter path para inode");
-            return 0;
-        }
-
-        return inode_num;
+        // caminho absoluto: começa a busca a partir da raiz (inode 2)
+        final_inode = path_to_inode(file, sb, bgds, path, 2);
+    } else {
+        // caminho relativo: começa a busca a partir do inode atual
+        final_inode = path_to_inode(file, sb, bgds, path, current_inode);
     }
 
-
-    if(inode_to_path(file, sb, bgds, current_inode, *return_path, max_len) != 0){
-        fprintf(stderr, "Erro ao converter inode para path");
-    }
-    (*return_path)[max_len - 1] = '\0';
-
-    size_t len = strlen(*return_path);
-
-    // Apenas adiciona '/' se não houver no final do current_path
-    if (len > 0 && (*return_path)[len - 1] != '/') {
-        strncat(*return_path, "/", max_len - strlen(*return_path) - 1);
-    }
-
-    strncat(*return_path, path, max_len - strlen(*return_path) - 1);
-
-
-    uint32_t inode_num = path_to_inode(file, sb, bgds, *return_path);
-    if(inode_num == 0){
-        fprintf(stderr, "Erro ao converter path para inode");
+    if (final_inode == 0) {
         return 0;
     }
 
-    return inode_num;
+    *return_path = malloc(sizeof(char) * max_len);
+    if (*return_path == NULL) {
+        fprintf(stderr, "Falha ao alocar memoria para o caminho\n");
+        return 0;
+    }
+
+    if (inode_to_path(file, sb, bgds, final_inode, *return_path, max_len) != 0) {
+        if (final_inode == 2) strncpy(*return_path, "/", max_len);
+        else snprintf(*return_path, max_len, "/<inode:%u>", final_inode);
+    }
+
+    return final_inode;
 }
 
 void format_permissions(uint16_t mode, char *permissions){
@@ -660,6 +674,33 @@ void format_size(uint32_t size, char *output, size_t str_len){
     }
 
     snprintf(output, str_len, "%.2f %s", size_double, units[unit_index]);
+}
+
+int read_and_print_block(FILE *file, uint32_t block, uint8_t *buffer, uint32_t block_size, uint32_t *size_left) {
+    if (block == 0) return 0;
+
+    if (*size_left == 0) return 0;
+
+    uint64_t to_read = (*size_left < block_size) ? *size_left : block_size;
+
+    if (fseek(file, block * block_size, SEEK_SET) != 0)
+        return -1;
+
+    if (fread(buffer, 1, to_read, file) != to_read)
+        return -1;
+
+    fwrite(buffer, 1, to_read, stdout);
+    *size_left -= to_read;
+
+    return 0;
+}
+
+int is_inode_dir(const inode *node) {
+    uint16_t file_type = node->i_mode & 0xF000; // pega os 4 bits mais significativos do campo i_mode, que mostra o tipo do arquivo
+    
+    uint16_t dir_type = 0x4000; // tipo diretorio
+
+    return file_type == dir_type;
 }
 
 
