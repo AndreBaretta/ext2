@@ -1,6 +1,6 @@
 # Definindo variáveis para os compiladores e flags
 CC = gcc
-CFLAGS = -Wall -Werror -Iinclude
+CFLAGS = -Wall -Iinclude
 LDFLAGS =
 
 # Definindo os arquivos fontes

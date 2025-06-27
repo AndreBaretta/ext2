@@ -74,7 +74,7 @@ int cmd_cat(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t c
 
     uint32_t block_size = 1024 << sb->s_log_block_size;
     uint32_t size_left = node.i_size;
-    char *buffer = malloc(block_size);
+    uint8_t *buffer = malloc(block_size);
 
     // Blocos diretos
     for (int i = 0; i < 12 && size_left > 0; i++) {
@@ -224,17 +224,6 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
     char *resolved_path;
 
     uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
-<<<<<<< HEAD
-    if(inode_num == 0){
-        fprintf(stderr, "Diretorio nao encontrado\n");
-        return -1;  // Retornar um código de erro se o diretório não for encontrado
-    }
-
-    inode inode;
-    if(read_inode(file, &inode, sb, bgds, inode_num) != 0){
-        fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
-        return -1;  // Retornar código de erro se falhar ao ler o inode
-=======
 
     if (inode_num == 0) {
         fprintf(stderr, "ls: O diretorio '%s' nao foi encontrado.\n", path);
@@ -253,21 +242,14 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
     if (!is_inode_dir(&dir_inode)) {
         fprintf(stderr, "ls: '%s' nao e um diretorio.\n", path);
         return -1;
->>>>>>> d9bf161072bff8145f960aa15864591374f229ae
     }
 
     uint32_t offset = 0;
     while (offset < dir_inode.i_size) {
         ext2_dir_entry *entry = NULL;
-<<<<<<< HEAD
-        if(read_directory_entry(file, &entry, sb, &inode, offset) != 0){
-            fprintf(stderr, "Erro ao ler diretorio\n");
-            return -1;  // Retornar código de erro se falhar ao ler a entrada do diretório
-=======
         if (read_directory_entry(file, &entry, sb, &dir_inode, offset) != 0) {
             fprintf(stderr, "ls: Erro ao ler entrada de diretorio no offset %u\n", offset);
             return -1;
->>>>>>> d9bf161072bff8145f960aa15864591374f229ae
         }
 
         if (entry->inode != 0) {
@@ -278,13 +260,7 @@ int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         free(entry);
     }
 
-<<<<<<< HEAD
-    free(resolved_path);
-
-    return 0;  // Retornar 0 para indicar sucesso
-=======
     return 0;
->>>>>>> d9bf161072bff8145f960aa15864591374f229ae
 }
 
 // Exibe o diretório corrente (caminho absoluto)
@@ -384,7 +360,6 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1;
     }
 
-    uint32_t block_size = 1024 << sb->s_log_block_size;
     uint32_t offset = 0;
     while (offset < parent_inode.i_size) {
         uint32_t entry_offset = offset;
