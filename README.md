@@ -49,7 +49,7 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
 - Para usar  o programa execute:
 
 ```
-$ ./ext2shell <caminho relativo para imagem>
+$ ./ext2shell <imagem.img>
 ```
 - Os comandos a seguir podem ser executados no terminal:
     
