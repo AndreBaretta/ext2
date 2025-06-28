@@ -65,3 +65,5 @@ $ ./run <caminho relativo para imagem>
   - `rename <file> <newfilename> `: renomeia arquivo file para newfilename.
   - `cp <source_path> <target_path>`: copia um arquivo de origem (source_path) para destino (target_path).
   - `mv <source_path> <target_path>`: move um arquivo de origem (source_path) para destino (target_path).
+
+- Os arquivos gerados pelo programa podem ser apagados de forma prática executando o comando `make clean`.
