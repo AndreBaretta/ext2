@@ -15,8 +15,8 @@ int  cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t c
 int  cmd_pwd(const char* current_path); // Imprime o diretório atual
 int  cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path); // Cria um arquivo vazio
 int  cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path); // Cria um diretorio vazio
-int  cmd_rm(const char *filename); // Exclui um arquivo
-int  cmd_rmdir(const char *dirname);    // Exclui um diretório
+int  cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path);     // Exclui um arquivo
+int  cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path);    // Exclui um diretório
 int  cmd_rename(const char *file, const char *newfilename);     // Renomeia um arquivo
 int  cmd_cp(const char *source_path, const char *target_path);  // Copia um arquivo de um path para outro
 int  cmd_mv(const char *source_path, const char *target_path);  // Move um arquivo de um path para outro

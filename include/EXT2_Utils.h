@@ -44,6 +44,9 @@ uint32_t resolve_path(FILE *file, Superblock *sb, block_group_descriptor *bgds, 
 void format_permissions(uint16_t mode, char *permissions);
 void format_size(uint32_t size, char *output, size_t str_len);
 int read_and_print_block(FILE *file, uint32_t block, uint8_t *buffer, uint32_t block_size, uint32_t *size_left);
+void deallocate_block(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t block_num);
+void deallocate_inode_blocks(FILE *file, Superblock *sb, block_group_descriptor *bgds, inode *target_inode);
+void deallocate_inode_metadata(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num);
 int is_inode_dir(const inode *node); // retorna 1 se o inode for um diretorio e 0 se não for
 
 #endif

@@ -595,16 +595,249 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 }
 
 // Remove o arquivo especificado
-int cmd_rm(const char *filename) {
-    printf("Comando rm chamado para arquivo: %s\n", filename);
-    // TODO: remover arquivo
+int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    char full_path[MAX_PATH_SIZE];
+    if (path[0] == '/') {
+        strncpy(full_path, path, MAX_PATH_SIZE);
+    } else {
+        char current_path_str[MAX_PATH_SIZE];
+        if (inode_to_path(file, sb, bgds, current_inode, current_path_str, MAX_PATH_SIZE) != 0) {
+            if (current_inode == 2) strcpy(current_path_str, "/");
+            else {
+                fprintf(stderr, "rm: nao foi possivel determinar o caminho atual.\n");
+                return -1;
+            }
+        }
+        if (strcmp(current_path_str, "/") == 0) {
+            snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
+        } else {
+            snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path_str, path);
+        }
+    }
+
+    uint32_t inode_num = path_to_inode(file, sb, bgds, full_path, 2);
+    if (inode_num == 0) {
+        fprintf(stderr, "rm: nao foi possivel remover '%s': Arquivo ou diretorio nao encontrado\n", path);
+        return -1;
+    }
+
+    inode target_inode;
+    read_inode(file, &target_inode, sb, bgds, inode_num);
+    if (is_inode_dir(&target_inode)) {
+        fprintf(stderr, "rm: nao foi possivel remover '%s': E um diretorio. Use 'rmdir'.\n", path);
+        return -1;
+    }
+
+    // extrai o nome do arquivo e o caminho do diretório pai a partir do caminho completo
+    char parent_path[MAX_PATH_SIZE];
+    char filename[256];
+    char *last_slash = strrchr(full_path, '/');
+
+    if (last_slash == NULL) {
+        fprintf(stderr, "rm: caminho invalido '%s'\n", full_path);
+        return -1;
+    }
+
+    strncpy(filename, last_slash + 1, sizeof(filename) - 1);
+    filename[sizeof(filename) - 1] = '\0';
+
+    if (last_slash == full_path) {
+        strcpy(parent_path, "/");
+    } else {
+        *last_slash = '\0';
+        strcpy(parent_path, full_path);
+    }
+
+    uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
+    inode parent_inode;
+    read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+
+    uint32_t offset = 0;
+    ext2_dir_entry *prev_entry = NULL;
+    uint32_t prev_entry_offset = 0;
+    int entry_removed = 0;
+
+    while (offset < parent_inode.i_size) {
+        ext2_dir_entry *entry = NULL;
+        if (read_directory_entry(file, &entry, sb, &parent_inode, offset) != 0) {
+            break;
+        }
+
+        if (entry->inode != 0) {
+            char name[entry->name_len + 1];
+            memcpy(name, entry->name, entry->name_len);
+            name[entry->name_len] = '\0';
+
+            if (strcmp(name, filename) == 0 && entry->inode == inode_num) {
+                if (prev_entry) {
+                    // adiciona o tamanho do registro atual ao anterior para "apagar" o atual
+                    prev_entry->rec_len += entry->rec_len;
+                    write_directory_entry(file, prev_entry, sb, &parent_inode, prev_entry_offset);
+                    entry_removed = 1;
+                } else {
+                    // primeira entrada válida no bloco, apenas zera o inode
+                    entry->inode = 0;
+                    write_directory_entry(file, entry, sb, &parent_inode, offset);
+                    entry_removed = 1;
+                }
+                free(entry);
+                break; 
+            }
+        }
+
+        if (prev_entry) free(prev_entry);
+        prev_entry = entry;
+        prev_entry_offset = offset;
+        offset += entry->rec_len;
+    }
+    if (prev_entry) free(prev_entry);
+
+    if (!entry_removed) {
+        fprintf(stderr, "rm: erro critico ao tentar remover a entrada do diretorio '%s'.\n", filename);
+        return -1;
+    }
+
+    // atualiza os metadados
+    parent_inode.i_mtime = time(NULL);
+    write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+
+    target_inode.i_links_count--;
+    if (target_inode.i_links_count == 0) {
+        deallocate_inode_blocks(file, sb, bgds, &target_inode);
+        deallocate_inode_metadata(file, sb, bgds, inode_num);
+        target_inode.i_dtime = time(NULL);
+    }
+    write_inode(file, &target_inode, sb, bgds, inode_num);
+
+    write_superblock(file, sb);
+
+    int group_count = (sb->s_blocks_count + sb->s_blocks_per_group - 1) / sb->s_blocks_per_group;
+    for (int i = 0; i < group_count; i++) {
+        write_block_group_descriptor(file, &bgds[i], sb, i);
+    }
+
+    printf("Arquivo '%s' removido.\n", path);
     return 0;
 }
 
 // Remove o diretório especificado, se estiver vazio
-int cmd_rmdir(const char *dirname) {
-    printf("Comando rmdir chamado para diretório: %s\n", dirname);
-    // TODO: remover diretório (se vazio)
+int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // resolver o caminho e obter o inode do diretorio
+    uint32_t target_inode_num = path_to_inode(file, sb, bgds, path, current_inode);
+
+    if (target_inode_num == 0) {
+        fprintf(stderr, "rmdir: falha ao remover '%s': Arquivo ou diretorio nao encontrado\n", path);
+        return -1;
+    }
+
+    // validações
+    if (target_inode_num == 2) {
+        fprintf(stderr, "rmdir: falha ao remover '/': Nao e possivel remover o diretorio raiz\n");
+        return -1;
+    }
+    if (strcmp(path, ".") == 0 || strcmp(path, "..") == 0) {
+        fprintf(stderr, "rmdir: falha ao remover '%s': Argumento invalido\n", path);
+        return -1;
+    }
+
+    inode target_inode;
+    if (read_inode(file, &target_inode, sb, bgds, target_inode_num) != 0) {
+        fprintf(stderr, "rmdir: erro critico ao ler o inode %u\n", target_inode_num);
+        return -1;
+    }
+
+    if (!is_inode_dir(&target_inode)) {
+        fprintf(stderr, "rmdir: falha ao remover '%s': Nao e um diretorio\n", path);
+        return -1;
+    }
+
+    // verificar se o diretório está vazio (contém apenas '.' e '..')
+    uint32_t offset = 0;
+    int entry_count = 0;
+    while (offset < target_inode.i_size) {
+        ext2_dir_entry *entry = NULL;
+        if (read_directory_entry(file, &entry, sb, &target_inode, offset) != 0) break;
+        
+        if (entry->inode != 0) { // se for uma entrada válida
+            char name[entry->name_len + 1];
+            memcpy(name, entry->name, entry->name_len);
+            name[entry->name_len] = '\0';
+            if (strcmp(name, ".") != 0 && strcmp(name, "..") != 0) {
+                fprintf(stderr, "rmdir: falha ao remover '%s': O diretorio nao esta vazio\n", path);
+                free(entry);
+                return -1;
+            }
+        }
+        offset += entry->rec_len;
+        free(entry);
+    }
+
+    // remover a entrada do diretório do seu pai
+    char parent_path[MAX_PATH_SIZE];
+    char dir_name[256];
+    // reconstroi o caminho absoluto para encontrar o pai
+    char full_path[MAX_PATH_SIZE];
+    inode_to_path(file, sb, bgds, target_inode_num, full_path, MAX_PATH_SIZE);
+    
+    char *last_slash = strrchr(full_path, '/');
+    strncpy(dir_name, last_slash + 1, sizeof(dir_name) - 1);
+    if (last_slash == full_path) strcpy(parent_path, "/");
+    else { *last_slash = '\0'; strcpy(parent_path, full_path); }
+
+    uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
+    inode parent_inode;
+    read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+
+    offset = 0;
+    uint32_t prev_entry_offset = 0;
+    while (offset < parent_inode.i_size) {
+        ext2_dir_entry *prev_entry = NULL;
+        read_directory_entry(file, &prev_entry, sb, &parent_inode, prev_entry_offset);
+        
+        ext2_dir_entry *entry = NULL;
+        read_directory_entry(file, &entry, sb, &parent_inode, offset);
+
+        if (entry->inode == target_inode_num) {
+            prev_entry->rec_len += entry->rec_len;
+            write_directory_entry(file, prev_entry, sb, &parent_inode, prev_entry_offset);
+            free(entry);
+            free(prev_entry);
+            break;
+        }
+
+        prev_entry_offset = offset;
+        offset += entry->rec_len;
+        free(entry);
+        free(prev_entry);
+    }
+    
+    // atualizar metadados e contadores
+    // diminui o contador de links do pai, já que a entrada '..' do diretório removido apontava para ele
+    parent_inode.i_links_count--;
+    parent_inode.i_mtime = time(NULL);
+    write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
+    
+    // zera o contador de links do diretório a ser removido (a entrada '.' apontava pra ele mesmo e a entrada no pai foi removida)
+    target_inode.i_links_count = 0;
+    target_inode.i_dtime = time(NULL);
+    write_inode(file, &target_inode, sb, bgds, target_inode_num);
+
+    // desalocar blocos
+    uint32_t group = (target_inode_num - 1) / sb->s_inodes_per_group;
+    deallocate_inode_blocks(file, sb, bgds, &target_inode);
+    deallocate_inode_metadata(file, sb, bgds, target_inode_num);
+    
+    // diminui o contador de diretórios usados no grupo
+    bgds[group].bg_used_dirs_count--;
+
+    // salvar Superbloco e todos os descritores de grupo
+    write_superblock(file, sb);
+    int group_count = (sb->s_blocks_count + sb->s_blocks_per_group - 1) / sb->s_blocks_per_group;
+    for (int i = 0; i < group_count; i++) {
+        write_block_group_descriptor(file, &bgds[i], sb, i);
+    }
+    
+    printf("Diretorio '%s' removido.\n", path);
     return 0;
 }
 
@@ -695,9 +928,9 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "mkdir") == 0 && argc == 2) {
             cmd_mkdir(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "rm") == 0 && argc == 2) {
-            cmd_rm(args[1]);
+            cmd_rm(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "rmdir") == 0 && argc == 2) {
-            cmd_rmdir(args[1]);
+            cmd_rmdir(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "rename") == 0 && argc == 3) {
             cmd_rename(args[1], args[2]);
         } else if (strcmp(args[0], "cp") == 0 && argc == 3) {

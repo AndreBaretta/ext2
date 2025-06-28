@@ -233,42 +233,79 @@ void print_inode(inode *inode, uint32_t number){
 }
 
 // Funções de diretório
+int read_directory_entry(FILE *file, ext2_dir_entry **entry, Superblock *sb, inode *inode, uint32_t offset) {
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    if (offset >= inode->i_size) {
+        return -1; // offset fora dos limites do diretório
+    }
 
-int read_directory_entry(FILE *file, ext2_dir_entry **entry, Superblock *sb, inode *inode, uint32_t offset){
-    uint32_t block_size = 1024 << sb->s_log_block_size;    
+    uint32_t logical_block = offset / block_size;
+    uint32_t offset_in_block = offset % block_size;
+    uint32_t physical_block_num = 0;
+    uint32_t pointers_per_block = block_size / sizeof(uint32_t);
 
-    uint32_t block_number = inode->i_block[offset / block_size];
-    if(block_number == 0){
+    // encontrar o número do bloco físico correspondente ao bloco lógico
+    if (logical_block < 12) {
+        // blocos diretos
+        physical_block_num = inode->i_block[logical_block];
+    } else if (logical_block < 12 + pointers_per_block) {
+        // bloco indireto simples
+        uint32_t *indirect_block = malloc(block_size);
+        if (read_block(file, indirect_block, inode->i_block[12], block_size) == 0) {
+            physical_block_num = indirect_block[logical_block - 12];
+        }
+        free(indirect_block);
+    } else if (logical_block < 12 + pointers_per_block + (pointers_per_block * pointers_per_block)) {
+        // bloco indireto duplo
+        uint32_t *double_indirect_block = malloc(block_size);
+        if (read_block(file, double_indirect_block, inode->i_block[13], block_size) == 0) {
+            uint32_t indirect_block_idx = (logical_block - 12 - pointers_per_block) / pointers_per_block;
+            uint32_t *indirect_block = malloc(block_size);
+            if (read_block(file, indirect_block, double_indirect_block[indirect_block_idx], block_size) == 0) {
+                uint32_t data_block_idx = (logical_block - 12 - pointers_per_block) % pointers_per_block;
+                physical_block_num = indirect_block[data_block_idx];
+            }
+            free(indirect_block);
+        }
+        free(double_indirect_block);
+    }
+
+    if (physical_block_num == 0) {
+        fprintf(stderr, "Erro: Bloco fisico nao encontrado para o offset %u\n", offset);
         return -1;
     }
-    uint32_t block_position = block_number * block_size + offset % block_size;
 
+    uint32_t block_position = physical_block_num * block_size + offset_in_block;
     uint8_t temp[8];
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Erro ao buscar o diretório");
+        perror("Erro ao buscar o diretorio");
         return -1;
     }
     if (fread(temp, 1, 8, file) != 8) {
-        perror("Erro ao ler o diretório");
         return -1;
     }
 
     uint16_t rec_len = *(uint16_t *)&temp[4];
-
-    if(rec_len < 8 || rec_len > block_size || rec_len % 4 != 0){
-        fprintf(stderr, "Tamanho de registro inválido\n");
+    if (rec_len < 8 || rec_len > block_size || rec_len % 4 != 0) {
+        fprintf(stderr, "Tamanho de registro invalido: %u\n", rec_len);
         return -1;
     }
 
     *entry = malloc(rec_len);
+    if (!*entry) {
+        perror("Falha ao alocar memoria para a entrada de diretorio");
+        return -1;
+    }
 
     if (fseek(file, block_position, SEEK_SET) != 0) {
-        perror("Erro ao buscar o diretório");
+        perror("Erro ao buscar o diretorio novamente");
+        free(*entry);
         return -1;
     }
     if (fread(*entry, rec_len, 1, file) != 1) {
-        perror("Erro ao ler o diretório");
+        perror("Erro ao ler a entrada completa do diretorio");
+        free(*entry);
         return -1;
     }
 
@@ -703,4 +740,173 @@ int is_inode_dir(const inode *node) {
     return file_type == dir_type;
 }
 
+void deallocate_block(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t block_num) {
+    if (block_num == 0) return;
 
+    uint32_t group = (block_num - sb->s_first_data_block) / sb->s_blocks_per_group;
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint8_t *block_bitmap = malloc(block_size);
+    if (!block_bitmap) {
+        perror("Falha ao alocar memoria para o bitmap de blocos");
+        return;
+    }
+
+    if (read_block_bitmap(file, block_bitmap, sb, bgds, group) != 0) {
+        fprintf(stderr, "Falha ao ler o bitmap de blocos para o grupo %u\n", group);
+        free(block_bitmap);
+        return;
+    }
+
+    uint32_t index = (block_num - sb->s_first_data_block) % sb->s_blocks_per_group;
+    uint32_t byte_pos = index / 8;
+    uint8_t bit_pos = index % 8;
+
+    if (!((block_bitmap[byte_pos] >> bit_pos) & 1)) {
+        fprintf(stderr, "Aviso: O bloco %u ja esta livre.\n", block_num);
+        free(block_bitmap);
+        return;
+    }
+    
+    block_bitmap[byte_pos] &= ~(1 << bit_pos);
+
+    if (write_block_bitmap(file, block_bitmap, sb, bgds, group) != 0) {
+        fprintf(stderr, "Falha ao escrever o bitmap de blocos para o grupo %u\n", group);
+        free(block_bitmap);
+        return;
+    }
+
+    free(block_bitmap);
+
+    sb->s_free_blocks_count++;
+    bgds[group].bg_free_blocks_count++;
+}
+
+void deallocate_inode_blocks(FILE *file, Superblock *sb, block_group_descriptor *bgds, inode *target_inode) {
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint32_t pointers_per_block = block_size / sizeof(uint32_t);
+
+    // desaloca blocos diretos
+    for (int i = 0; i < 12; i++) {
+        if (target_inode->i_block[i] != 0) {
+            deallocate_block(file, sb, bgds, target_inode->i_block[i]);
+        }
+    }
+
+    // desaloca bloco indireto simples
+    if (target_inode->i_block[12] != 0) {
+        uint32_t *indirect_block = malloc(block_size);
+        if (indirect_block && read_block(file, indirect_block, target_inode->i_block[12], block_size) == 0) {
+            for (uint32_t i = 0; i < pointers_per_block; i++) {
+                if (indirect_block[i] != 0) {
+                    deallocate_block(file, sb, bgds, indirect_block[i]); // desaloca bloco de dados
+                }
+            }
+        }
+        if (indirect_block) free(indirect_block);
+        deallocate_block(file, sb, bgds, target_inode->i_block[12]); // desaloca o bloco de ponteiros
+    }
+
+    // desaloca bloco indireto duplo
+    if (target_inode->i_block[13] != 0) {
+        uint32_t *double_indirect_block = malloc(block_size);
+        if (double_indirect_block && read_block(file, double_indirect_block, target_inode->i_block[13], block_size) == 0) {
+            for (uint32_t i = 0; i < pointers_per_block; i++) {
+                if (double_indirect_block[i] != 0) { // ponteiro para um bloco indireto simples
+                    uint32_t *indirect_block = malloc(block_size);
+                    if (indirect_block && read_block(file, indirect_block, double_indirect_block[i], block_size) == 0) {
+                        for (uint32_t j = 0; j < pointers_per_block; j++) {
+                            if (indirect_block[j] != 0) {
+                                deallocate_block(file, sb, bgds, indirect_block[j]); // desaloca bloco de dados
+                            }
+                        }
+                    }
+                    if (indirect_block) free(indirect_block);
+                    deallocate_block(file, sb, bgds, double_indirect_block[i]); // desaloca o bloco indireto simples
+                }
+            }
+        }
+        if (double_indirect_block) free(double_indirect_block);
+        deallocate_block(file, sb, bgds, target_inode->i_block[13]); // desaloca o bloco de ponteiros duplos
+    }
+
+    // desaloca bloco indireto triplo
+    if (target_inode->i_block[14] != 0) {
+        uint32_t *triple_indirect_block = malloc(block_size);
+        if (triple_indirect_block && read_block(file, triple_indirect_block, target_inode->i_block[14], block_size) == 0) {
+            for (uint32_t i = 0; i < pointers_per_block; i++) {
+                if (triple_indirect_block[i] != 0) { // ponteiro para um bloco indireto duplo
+                    uint32_t *double_indirect_block = malloc(block_size);
+                    if (double_indirect_block && read_block(file, double_indirect_block, triple_indirect_block[i], block_size) == 0) {
+                        for (uint32_t j = 0; j < pointers_per_block; j++) {
+                            if (double_indirect_block[j] != 0) { // ponteiro para um bloco indireto simples
+                                uint32_t *indirect_block = malloc(block_size);
+                                if (indirect_block && read_block(file, indirect_block, double_indirect_block[j], block_size) == 0) {
+                                    for (uint32_t k = 0; k < pointers_per_block; k++) {
+                                        if (indirect_block[k] != 0) {
+                                            deallocate_block(file, sb, bgds, indirect_block[k]); // desaloca bloco de dados
+                                        }
+                                    }
+                                }
+                                if (indirect_block) free(indirect_block);
+                                deallocate_block(file, sb, bgds, double_indirect_block[j]); // desaloca o bloco indireto simples
+                            }
+                        }
+                    }
+                    if (double_indirect_block) free(double_indirect_block);
+                    deallocate_block(file, sb, bgds, triple_indirect_block[i]); // desaloca o bloco indireto duplo
+                }
+            }
+        }
+        if (triple_indirect_block) free(triple_indirect_block);
+        deallocate_block(file, sb, bgds, target_inode->i_block[14]); // desaloca o próprio bloco de ponteiros triplos
+    }
+
+    // zera os campos no inode
+    target_inode->i_blocks = 0;
+    target_inode->i_size = 0;
+    for(int i=0; i<15; i++) {
+        target_inode->i_block[i] = 0;
+    }
+}
+
+void deallocate_inode_metadata(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num) {
+    if (inode_num < sb->s_first_ino) {
+         return;
+    }
+    uint32_t group = (inode_num - 1) / sb->s_inodes_per_group;
+    uint32_t inode_bitmap_size = sb->s_inodes_per_group / 8;
+    uint8_t *inode_bitmap = malloc(inode_bitmap_size);
+    if (!inode_bitmap) {
+        perror("Falha ao alocar memoria para o bitmap de inodes");
+        return;
+    }
+
+    if (read_inode_bitmap(file, inode_bitmap, sb, bgds, group) != 0) {
+        fprintf(stderr, "Falha ao ler o bitmap de inodes para o grupo %u\n", group);
+        free(inode_bitmap);
+        return;
+    }
+
+    uint32_t index = (inode_num - 1) % sb->s_inodes_per_group;
+    uint32_t byte_pos = index / 8;
+    uint8_t bit_pos = index % 8;
+
+    if (!((inode_bitmap[byte_pos] >> bit_pos) & 1)) {
+        fprintf(stderr, "Aviso: O inode %u ja esta livre.\n", inode_num);
+        free(inode_bitmap);
+        return;
+    }
+
+    inode_bitmap[byte_pos] &= ~(1 << bit_pos);
+
+    if (write_inode_bitmap(file, inode_bitmap, sb, bgds, group) != 0) {
+        fprintf(stderr, "Falha ao escrever o bitmap de inodes para o grupo %u\n", group);
+        free(inode_bitmap);
+        return;
+    }
+
+    free(inode_bitmap);
+
+    sb->s_free_inodes_count++;
+    bgds[group].bg_free_inodes_count++;
+}
