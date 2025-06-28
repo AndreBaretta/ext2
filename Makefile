@@ -8,7 +8,7 @@ SRC = main.c src/EXT2_Utils.c Shell/Shell.c
 OBJ = $(SRC:.c=.o)
 
 # Nome do executável final
-TARGET = run
+TARGET = ext2shell.o
 
 # Regras do Makefile
 
