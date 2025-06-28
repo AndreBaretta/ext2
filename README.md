@@ -27,6 +27,7 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
 ## Estrutura do projeto:
 ```
 .                       #Dir. raíz
+├── Img                 #Dir. com as Imagens do README.md
 ├── include             #Dir. de cabeçalhos do EXT2
 │   ├── EXT2.h          #Assinaturas das funções
 │   └── EXT2_Utils.h    #Estruturas
@@ -47,8 +48,8 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
 - Um binário executável será gerado após compilar o programa junto com arquivos de objeto (.obj).
 - Para usar  o programa execute:
 
-```bash
-$ ./run <caminho relativo para imagem>
+```
+$ ./ext2shell <caminho relativo para imagem>
 ```
 - Os comandos a seguir podem ser executados no terminal:
     
