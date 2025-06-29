@@ -1103,17 +1103,54 @@ void shell_loop(FILE *file) {
         if (fgets(input, sizeof(input), stdin) == NULL) 
             break;
 
-        // Remover \n
+        // remover \n
         input[strcspn(input, "\n")] = '\0';
 
-        // Separar comando e argumentos
+        // parser manual que lida com argumentos entre aspas, substituindo o strtok.
         int argc = 0;
-        char *token = strtok(input, " ");
-        while (token && argc < MAX_ARGS - 1) {
-            args[argc++] = token;
-            token = strtok(NULL, " ");
+        char *p = input;
+        while (*p != '\0' && argc < MAX_ARGS - 1) {
+            // pula os espaços em branco antes de um argumento
+            while (*p == ' ' || *p == '\t') {
+                p++;
+            }
+            if (*p == '\0') {
+                break; // fim da string
+            }
+
+            // início de um novo argumento foi encontrado
+            args[argc] = p;
+            argc++;
+
+            // determina o fim do argumento (com ou sem aspas)
+            if (*p == '"') {
+                // argumento entre aspas
+                args[argc - 1]++; // o argumento real começa depois da aspa
+                p++; // move o ponteiro para depois da aspa de abertura
+                // procura a aspa de fechamento
+                while (*p != '\0' && *p != '"') {
+                    p++;
+                }
+                // se encontrou a aspa de fechamento, termina a string ali
+                if (*p == '"') {
+                    *p = '\0';
+                    p++; // move o ponteiro para depois da aspa de fechamento
+                }
+            } else {
+                // argumento sem aspas
+                // procura o próximo espaço ou o fim da string
+                while (*p != '\0' && *p != ' ' && *p != '\t') {
+                    p++;
+                }
+                // se não for o fim da string, termina a string no espaço
+                if (*p != '\0') {
+                    *p = '\0';
+                    p++; // move o ponteiro para depois do espaço
+                }
+            }
         }
-        args[argc] = NULL;
+
+        args[argc] = NULL; // finaliza a lista de argumentos
 
         if (argc == 0) continue;
 
