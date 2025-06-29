@@ -52,9 +52,8 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
 $ ./ext2shell <imagem.img>
 ```
 - Os comandos a seguir podem ser executados no terminal:
-    ---
+
   - **`help`: exibe comandos e instruções de uso.**
-    ---  
   - `info`: exibe informações do disco e do sistema de arquivos.
   - `cat <arquivo>`: exibe o conteúdo de um arquivo no formato texto.
   - `attr <arquivo | diretório>`: exibe os atributos de um arquivo (file) ou diretório (dir).
