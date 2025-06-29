@@ -290,10 +290,17 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
                 return -1;
             }
         }
+        int required_len;
         if (strcmp(current_path, "/") == 0) {
-            snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
+            required_len = snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
         } else {
-            snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path, path);
+            required_len = snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path, path);
+        }
+
+        if (required_len >= MAX_PATH_SIZE) {
+            fprintf(stderr, "touch: O caminho resultante e muito longo.\n");
+            free(full_path); // libera a memória alocada antes de sair
+            return -1;
         }
     }
 
@@ -437,10 +444,15 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     } else {
         char current_path_str[MAX_PATH_SIZE];
         inode_to_path(file, sb, bgds, current_inode, current_path_str, MAX_PATH_SIZE);
-        if (strcmp(current_path_str, "/") == 0) 
+        if (strcmp(current_path_str, "/") == 0){ 
             snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
-        else 
-            snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path_str, path);
+        } else { 
+            int required_len = snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path_str, path);
+            if (required_len >= MAX_PATH_SIZE) {
+                fprintf(stderr, "mkdir: O caminho resultante e muito longo.\n");
+                return -1;
+            }
+        }
     }
 
     if (path_to_inode(file, sb, bgds, full_path, 2) != 0) {
@@ -594,6 +606,28 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     return 0;
 }
 
+// Imprime os comandos
+int cmd_help() {
+    printf("Comandos disponiveis no EXT2 Shell:\n\n");
+    printf("  info                               - Mostra informacoes do sistema de arquivos.\n");
+    printf("  ls <caminho>                       - Lista o conteudo de um diretorio.\n");
+    printf("  cd <caminho>                       - Altera o diretorio atual.\n");
+    printf("  pwd                                - Mostra o caminho do diretorio atual.\n");
+    printf("  cat <arquivo>                      - Exibe o conteudo de um arquivo de texto.\n");
+    printf("  attr <arquivo_ou_dir>              - Exibe os atributos de um arquivo ou diretorio.\n");
+    printf("  touch <arquivo>                    - Cria um arquivo vazio.\n");
+    printf("  mkdir <diretorio>                  - Cria um novo diretorio.\n");
+    printf("  rm <arquivo>                       - Remove um arquivo.\n");
+    printf("  rmdir <diretorio>                  - Remove um diretorio vazio.\n");
+    printf("  rename <nome_antigo> <nome_novo>   - Renomeia um arquivo ou diretorio.\n");
+    printf("  cp <origem_na_imagem> <destino>    - Copia um arquivo da imagem para o seu sistema.\n");
+    printf("  help                               - Mostra esta mensagem de ajuda.\n");
+    printf("  exit                               - Sai do shell.\n\n");
+    printf("Use aspas (\"\") para caminhos com espacos. Ex: cat \"meu arquivo.txt\"\n");
+
+    return 0;
+}
+
 // Remove o arquivo especificado
 int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
     char full_path[MAX_PATH_SIZE];
@@ -611,7 +645,11 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         if (strcmp(current_path_str, "/") == 0) {
             snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
         } else {
-            snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path_str, path);
+            int required_len = snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path_str, path);
+            if (required_len >= MAX_PATH_SIZE) {
+                fprintf(stderr, "rm: O caminho resultante e muito longo.\n");
+                return -1;
+            }
         }
     }
 
@@ -753,7 +791,6 @@ int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 
     // verificar se o diretório está vazio (contém apenas '.' e '..')
     uint32_t offset = 0;
-    int entry_count = 0;
     while (offset < target_inode.i_size) {
         ext2_dir_entry *entry = NULL;
         if (read_directory_entry(file, &entry, sb, &target_inode, offset) != 0) break;
@@ -1156,41 +1193,74 @@ void shell_loop(FILE *file) {
 
         // Mapeamento dos comandos
         if (strcmp(args[0], "info") == 0) {
-            cmd_info(&sb);
-        } else if (strcmp(args[0], "cat") == 0 && argc == 2) {
-            cmd_cat(file, &sb, bgds, current_inode, args[1]);
-        } else if (strcmp(args[0], "attr") == 0 && argc == 2) {
-            cmd_attr(file, &sb, bgds, current_inode, args[1]);
+            if(argc == 1) 
+                cmd_info(&sb);
+            else 
+                fprintf(stderr, "Uso: info\n");
+        } else if (strcmp(args[0], "cat") == 0) {
+            if(argc == 2) 
+                cmd_cat(file, &sb, bgds, current_inode, args[1]);
+            else 
+                fprintf(stderr, "Uso: cat <caminho_do_arquivo>\n");
+        } else if (strcmp(args[0], "help") == 0) {
+            cmd_help();
+        } else if (strcmp(args[0], "attr") == 0) {
+            if(argc == 2) 
+                cmd_attr(file, &sb, bgds, current_inode, args[1]);
+            else 
+                fprintf(stderr, "Uso: attr <caminho_arquivo_ou_dir>\n");
         } else if (strcmp(args[0], "cd") == 0) {
-            if(argc == 1){
+            if(argc == 1) 
                 current_inode = 2;
-                continue;
-            }
-            char *path_arg = args[1];
-            cmd_cd(file, &sb, bgds, path_arg, current_path, &current_inode);
+            else if (argc == 2)     
+                cmd_cd(file, &sb, bgds, args[1], current_path, &current_inode);
+            else 
+                fprintf(stderr, "Uso: cd <caminho_do_diretorio>\n");
         } else if (strcmp(args[0], "ls") == 0) {
-            char *path_arg = (argc > 1) ? args[1] : "";
-            cmd_ls(file, &sb, bgds, current_inode, path_arg);
+            if(argc <= 2) {
+                char *path_arg = (argc > 1) ? args[1] : "";
+                cmd_ls(file, &sb, bgds, current_inode, path_arg);
+            } else 
+                fprintf(stderr, "Uso: ls <caminho_do_diretorio>\n");
         } else if (strcmp(args[0], "pwd") == 0) {
-            cmd_pwd(current_path);
-        } else if (strcmp(args[0], "touch") == 0 && argc == 2) {
-            cmd_touch(file, &sb, bgds, current_inode, args[1]);
-        } else if (strcmp(args[0], "mkdir") == 0 && argc == 2) {
-            cmd_mkdir(file, &sb, bgds, current_inode, args[1]);
-        } else if (strcmp(args[0], "rm") == 0 && argc == 2) {
-            cmd_rm(file, &sb, bgds, current_inode, args[1]);
-        } else if (strcmp(args[0], "rmdir") == 0 && argc == 2) {
-            cmd_rmdir(file, &sb, bgds, current_inode, args[1]);
-        } else if (strcmp(args[0], "rename") == 0 && argc == 3) {
-            cmd_rename(file, &sb, bgds, current_inode, args[1], args[2]);
-        } else if (strcmp(args[0], "cp") == 0 && argc == 3) {
-            cmd_cp(file, &sb, bgds, args[1], args[2]);
-        } else if (strcmp(args[0], "mv") == 0 && argc == 3) {
-            cmd_mv(args[1], args[2]);
+            if(argc == 1) 
+                cmd_pwd(current_path);
+            else 
+                fprintf(stderr, "Uso: pwd\n");
+        } else if (strcmp(args[0], "touch") == 0) {
+            if (argc == 2) 
+                cmd_touch(file, &sb, bgds, current_inode, args[1]);
+            else 
+                fprintf(stderr, "Uso: touch <nome_do_arquivo>\n");
+        } else if (strcmp(args[0], "mkdir") == 0) {
+            if(argc == 2) 
+                cmd_mkdir(file, &sb, bgds, current_inode, args[1]);
+            else 
+                fprintf(stderr, "Uso: mkdir <nome_do_diretorio>\n");
+        } else if (strcmp(args[0], "rm") == 0) {
+            if(argc == 2) 
+                cmd_rm(file, &sb, bgds, current_inode, args[1]);
+            else 
+                fprintf(stderr, "Uso: rm <nome_do_arquivo>\n");
+        } else if (strcmp(args[0], "rmdir") == 0) {
+            if(argc == 2) 
+                cmd_rmdir(file, &sb, bgds, current_inode, args[1]);
+            else 
+                fprintf(stderr, "Uso: rmdir <nome_do_diretorio>\n");
+        } else if (strcmp(args[0], "rename") == 0) {
+            if(argc == 3) 
+                cmd_rename(file, &sb, bgds, current_inode, args[1], args[2]);
+            else 
+                fprintf(stderr, "Uso: rename <nome_antigo> <nome_novo>\n");
+        } else if (strcmp(args[0], "cp") == 0) {
+            if(argc == 3) 
+                cmd_cp(file, &sb, bgds, args[1], args[2]);
+            else 
+                fprintf(stderr, "Uso: cp <origem_na_imagem> <destino_no_host>\n");
         } else if (strcmp(args[0], "exit") == 0) {
             break;
         } else {
-            printf("Comando não reconhecido: %s\n", args[0]);
+            fprintf(stderr, "Comando nao reconhecido: '%s'. Digite 'help' para ver a lista de comandos.\n", args[0]);
         }
     }
 }

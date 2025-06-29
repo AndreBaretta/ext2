@@ -19,6 +19,7 @@ int  cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t c
 int  cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path);    // Exclui um diretório
 int  cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *source_name, const char *new_name); // Renomeia um arquivo
 int  cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *source_ext2_path, const char *dest_host_path);  // Copia um arquivo da imagem para o SO hospedeiro
+int  cmd_help(); // Imprime os comandos e seus parametros
 // int  cmd_mv(const char *source_path, const char *target_path);  // Move um arquivo de um path para outro
 
 // Função principal do shell
