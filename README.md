@@ -52,18 +52,20 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
 $ ./ext2shell <imagem.img>
 ```
 - Os comandos a seguir podem ser executados no terminal:
+    ---
   - **`help`: exibe comandos e instruções de uso.**
+    ---  
   - `info`: exibe informações do disco e do sistema de arquivos.
-  - `cat <file>`: exibe o conteúdo de um arquivo no formato texto.
-  - `attr <file | dir>`: exibe os atributos de um arquivo (file) ou diretório (dir).
-  - `cd <path>`: altera o diretório corrente para o definido como path.
-  - `ls`: lista os arquivos e diretórios do diretório corrente.
+  - `cat <arquivo>`: exibe o conteúdo de um arquivo no formato texto.
+  - `attr <arquivo | diretório>`: exibe os atributos de um arquivo (file) ou diretório (dir).
+  - `cd <caminho>`: altera o diretório corrente para o definido como path.
+  - `ls <caminho>`: lista os arquivos e diretórios do diretório corrente.
   - `pwd`: exibe o diretório corrente (caminho absoluto).
-  - `touch <file>`: cria o arquivo file com conteúdo vazio.
-  - `mkdir <dir>`: cria o diretório dir vazio.
-  - `rm <file>`: remove o arquivo file do sistema.
-  - `rmdir <dir>`: remove o diretório dir, se estiver vazio.
-  - `rename <file> <newfilename> `: renomeia arquivo file para newfilename.
-  - `cp <EXT2_file_path> <host_file_path>`: copia o conteúdo de um arquivo da imagem EXT2 para um arquivo no disco rígido da máquina real.
+  - `touch <arquivo>`: cria o arquivo file com conteúdo vazio.
+  - `mkdir <diretório>`: cria o diretório dir vazio.
+  - `rm <arquivo>`: remove o arquivo file do sistema.
+  - `rmdir <diretório>`: remove o diretório dir, se estiver vazio.
+  - `rename <arquivo> <novo_nome_do_arquivo> `: renomeia arquivo file para newfilename.
+  - `cp <caminho_EXT2> <caminho_máquina_real>`: copia o conteúdo de um arquivo da imagem EXT2 para um arquivo no disco rígido da máquina real.
 
 - Os arquivos gerados pelo programa podem ser apagados de forma prática executando o comando `make clean`.
