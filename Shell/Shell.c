@@ -1,7 +1,7 @@
 //  - Descrição:............ Código responsável por criar um shell para o sistema de arquivos EXT2
 //  - Autor:................ André Felipe Baretta, João Pedro Inoe
 //  - Data de criação:...... 29/05/2025
-//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025.
+//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025, 23/06/2025, 24/06/2025, 27/06/2026, 28/06/2025.
 
 #include "../include/EXT2_Utils.h"
 #include "../include/EXT2.h"
@@ -842,23 +842,236 @@ int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 }
 
 // Renomeia um arquivo de file para newfilename
-int cmd_rename(const char *file, const char *newfilename) {
-    printf("Comando rename chamado para arquivo: %s -> %s\n", file, newfilename);
-    // TODO: renomear arquivo
+int cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *source_name, const char *new_name) {
+    // validação
+    if (strlen(new_name) > 255) {
+        fprintf(stderr, "rename: o novo nome '%s' e muito longo\n", new_name);
+        return -1;
+    }
+    if (strcmp(source_name, new_name) == 0) {
+        return 0; // nada a fazer
+    }
+
+    uint32_t source_inode_num = path_to_inode(file, sb, bgds, source_name, current_inode);
+    if (source_inode_num == 0) {
+        fprintf(stderr, "rename: nao foi possivel renomear '%s': Arquivo ou diretorio nao encontrado\n", source_name);
+        return -1;
+    }
+
+    uint32_t new_inode_num = path_to_inode(file, sb, bgds, new_name, current_inode);
+    if (new_inode_num != 0) {
+        fprintf(stderr, "rename: nao foi possivel renomear para '%s': Arquivo ou diretorio ja existe\n", new_name);
+        return -1;
+    }
+
+    inode parent_inode;
+    read_inode(file, &parent_inode, sb, bgds, current_inode);
+
+    // remover a entrada de diretorio
+    uint32_t offset = 0;
+    uint32_t prev_entry_offset = 0;
+    int old_entry_removed = 0;
+
+    while (offset < parent_inode.i_size) {
+        ext2_dir_entry *prev_entry = NULL;
+        read_directory_entry(file, &prev_entry, sb, &parent_inode, prev_entry_offset);
+        
+        ext2_dir_entry *entry = NULL;
+        if(read_directory_entry(file, &entry, sb, &parent_inode, offset) != 0) {
+            if(prev_entry) free(prev_entry);
+            break;
+        }
+
+        // escreve na mesma entrada que a antiga se houver espaço
+        if (entry->inode == source_inode_num && entry->name_len == strlen(source_name) && strncmp(entry->name, source_name, entry->name_len) == 0) {
+            prev_entry->rec_len += entry->rec_len;
+            write_directory_entry(file, prev_entry, sb, &parent_inode, prev_entry_offset);
+            old_entry_removed = 1;
+            free(entry);
+            free(prev_entry);
+            break;
+        }
+        
+        prev_entry_offset = offset;
+        offset += entry->rec_len;
+        free(entry);
+        free(prev_entry);
+    }
+
+    if (!old_entry_removed) {
+        fprintf(stderr, "rename: erro ao tentar remover a entrada antiga '%s'\n", source_name);
+        return -1;
+    }
+
+    // adiciona a nova entrada no diretorio
+    // recarrega o inode pai, pois seus dados foram modificados
+    read_inode(file, &parent_inode, sb, bgds, current_inode);
+    offset = 0;
+    int new_entry_added = 0;
+    uint16_t required_len_new = 8 + ((strlen(new_name) + 3) & ~3);
+
+    while (offset < parent_inode.i_size) {
+        ext2_dir_entry *entry = NULL;
+        if(read_directory_entry(file, &entry, sb, &parent_inode, offset) != 0) break;
+        
+        uint16_t ideal_len_entry = 8 + ((entry->name_len + 3) & ~3);
+        
+        if (entry->inode != 0 && entry->rec_len >= ideal_len_entry + required_len_new) {
+            uint16_t original_rec_len = entry->rec_len;
+            entry->rec_len = ideal_len_entry;
+            write_directory_entry(file, entry, sb, &parent_inode, offset);
+
+            uint32_t new_entry_offset = offset + ideal_len_entry;
+            uint16_t new_entry_rec_len = original_rec_len - ideal_len_entry;
+            
+            ext2_dir_entry *new_file_entry = calloc(1, new_entry_rec_len);
+            new_file_entry->inode = source_inode_num;
+            new_file_entry->rec_len = new_entry_rec_len;
+            new_file_entry->name_len = strlen(new_name);
+            
+            inode source_inode; // precisamos ler o inode para saber o tipo do arquivo
+            read_inode(file, &source_inode, sb, bgds, source_inode_num);
+            new_file_entry->file_type = is_inode_dir(&source_inode) ? 2 : 1;
+            
+            memcpy(new_file_entry->name, new_name, new_file_entry->name_len);
+
+            write_directory_entry(file, new_file_entry, sb, &parent_inode, new_entry_offset);
+            
+            new_entry_added = 1;
+            free(new_file_entry);
+            free(entry);
+            break;
+        }
+        offset += entry->rec_len;
+        free(entry);
+    }
+    
+    if (!new_entry_added) {
+        fprintf(stderr, "rename: nao ha espaco no diretorio para o novo nome '%s'\n", new_name);
+        return -1;
+    }
+
+    // atualiza timestamps
+    // atualiza ctime do inode renomeado
+    inode source_inode;
+    read_inode(file, &source_inode, sb, bgds, source_inode_num);
+    source_inode.i_ctime = time(NULL);
+    write_inode(file, &source_inode, sb, bgds, source_inode_num);
+    
+    // atualiza mtime do diretório pai, pois seu conteúdo mudou
+    parent_inode.i_mtime = time(NULL);
+    write_inode(file, &parent_inode, sb, bgds, current_inode);
+    
+    printf("'%s' renomeado para '%s'\n", source_name, new_name);
     return 0;
 }
 
-// Copia arquivo source_path para target_path
-int cmd_cp(const char *source_path, const char *target_path) {
-    printf("Comando cp chamado de: %s para %s\n", source_path, target_path);
-    // TODO: copiar arquivo
+// Copia arquivo source_ext2_path (na imagem) para dest_host_path (no sistema hospedeiro)
+int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *source_ext2_path, const char *dest_host_path) {
+    // o caminho na imagem é absoluto, então começamos a busca da raiz (inode 2)
+    uint32_t source_inode_num = path_to_inode(file, sb, bgds, source_ext2_path, 2);
+    if (source_inode_num == 0) {
+        fprintf(stderr, "cp: nao foi possivel copiar '%s': Arquivo nao encontrado na imagem\n", source_ext2_path);
+        return -1;
+    }
+
+    inode source_inode;
+    if (read_inode(file, &source_inode, sb, bgds, source_inode_num) != 0) {
+        fprintf(stderr, "cp: erro ao ler o inode de origem %u\n", source_inode_num);
+        return -1;
+    }
+    if (is_inode_dir(&source_inode)) {
+        fprintf(stderr, "cp: nao e possivel copiar diretorios (nao suportado)\n");
+        return -1;
+    }
+    
+    // abrir o arquivo de destino no sistema
+    FILE *host_file = fopen(dest_host_path, "wb");
+    if (host_file == NULL) {
+        perror("cp: erro ao criar o arquivo de destino no sistema hospedeiro");
+        return -1;
+    }
+
+    // ler os blocos da imagem e escrever no destino
+    uint32_t block_size = 1024 << sb->s_log_block_size;
+    uint32_t size_left = source_inode.i_size;
+    uint8_t *buffer = malloc(block_size);
+    if (!buffer) {
+        perror("cp: falha ao alocar buffer de copia");
+        fclose(host_file);
+        return -1;
+    }
+
+    // blocos diretos
+    for (int i = 0; i < 12 && size_left > 0; i++) {
+        copy_data_block(file, host_file, source_inode.i_block[i], buffer, block_size, &size_left);
+    }
+
+    // bloco indireto simples
+    if (size_left > 0 && source_inode.i_block[12]) {
+        uint32_t *indirect = malloc(block_size);
+        if(indirect && read_block(file, indirect, source_inode.i_block[12], block_size) == 0) {
+            for (uint32_t i = 0; i < block_size / 4 && size_left > 0; i++) {
+                copy_data_block(file, host_file, indirect[i], buffer, block_size, &size_left);
+            }
+        }
+        if(indirect) free(indirect);
+    }
+
+    // bloco indireto duplo
+    if (size_left > 0 && source_inode.i_block[13]) {
+        uint32_t *double_indirect = malloc(block_size);
+        if(double_indirect && read_block(file, double_indirect, source_inode.i_block[13], block_size) == 0) {
+            for (uint32_t i = 0; i < block_size / 4 && size_left > 0; i++) {
+                if (!double_indirect[i]) continue;
+                uint32_t *indirect = malloc(block_size);
+                if(indirect && read_block(file, indirect, double_indirect[i], block_size) == 0) {
+                    for (uint32_t j = 0; j < block_size / 4 && size_left > 0; j++) {
+                        copy_data_block(file, host_file, indirect[j], buffer, block_size, &size_left);
+                    }
+                }
+                if(indirect) free(indirect);
+            }
+        }
+        if(double_indirect) free(double_indirect);
+    }
+
+    // bloco indireto triplo
+    if (size_left > 0 && source_inode.i_block[14]) {
+        uint32_t *triple_indirect = malloc(block_size);
+        if (triple_indirect && read_block(file, triple_indirect, source_inode.i_block[14], block_size) == 0) {
+            for (uint32_t i = 0; i < block_size / 4 && size_left > 0; i++) {
+                if (!triple_indirect[i]) continue;
+                uint32_t *double_indirect = malloc(block_size);
+                if (double_indirect && read_block(file, double_indirect, triple_indirect[i], block_size) == 0) {
+                    for (uint32_t j = 0; j < block_size / 4 && size_left > 0; j++) {
+                        if (!double_indirect[j]) continue;
+                        uint32_t *indirect = malloc(block_size);
+                        if (indirect && read_block(file, indirect, double_indirect[j], block_size) == 0) {
+                            for (uint32_t k = 0; k < block_size / 4 && size_left > 0; k++) {
+                                copy_data_block(file, host_file, indirect[k], buffer, block_size, &size_left);
+                            }
+                        }
+                        if (indirect) free(indirect);
+                    }
+                }
+                if (double_indirect) free(double_indirect);
+            }
+        }
+        if (triple_indirect) free(triple_indirect);
+    }
+
+    // fechar o arquivo e liberar memória alocada
+    free(buffer);
+    fclose(host_file);
+
+    printf("Arquivo '%s' copiado para '%s' com sucesso.\n", source_ext2_path, dest_host_path);
     return 0;
 }
 
 // Move arquivo source_path para target_path
-int cmd_mv(const char *source_path, const char *target_path) {
-    printf("Comando mv chamado de: %s para %s\n", source_path, target_path);
-    // TODO: mover arquivo
+int  cmd_mv(const char *source_path, const char *target_path) {
+    printf("Comando mv chamado de %s para %s\n", source_path, target_path);
     return 0;
 }
 
@@ -932,9 +1145,9 @@ void shell_loop(FILE *file) {
         } else if (strcmp(args[0], "rmdir") == 0 && argc == 2) {
             cmd_rmdir(file, &sb, bgds, current_inode, args[1]);
         } else if (strcmp(args[0], "rename") == 0 && argc == 3) {
-            cmd_rename(args[1], args[2]);
+            cmd_rename(file, &sb, bgds, current_inode, args[1], args[2]);
         } else if (strcmp(args[0], "cp") == 0 && argc == 3) {
-            cmd_cp(args[1], args[2]);
+            cmd_cp(file, &sb, bgds, args[1], args[2]);
         } else if (strcmp(args[0], "mv") == 0 && argc == 3) {
             cmd_mv(args[1], args[2]);
         } else if (strcmp(args[0], "exit") == 0) {

@@ -1,7 +1,7 @@
 //  - Descrição:............ Código responsável por implementar as funções básicas de leitura e escrita de estruturas do sistema de arquivos EXT2
 //  - Autor:................ André Felipe Baretta, João Pedro Inoe
 //  - Data de criação:...... 29/05/2025
-//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025.
+//  - Datas de atualização:. 29/05/2025, 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025, 23/06/2025, 24/06/2025, 27/06/2026, 28/06/2025.
 
 
 #include "../include/EXT2_Utils.h"
@@ -909,4 +909,21 @@ void deallocate_inode_metadata(FILE *file, Superblock *sb, block_group_descripto
 
     sb->s_free_inodes_count++;
     bgds[group].bg_free_inodes_count++;
+}
+
+void copy_data_block(FILE *ext2_image_file, FILE *host_file, uint32_t block_num, uint8_t *buffer, uint32_t block_size, uint32_t *size_left) {
+    if (block_num == 0 || *size_left == 0) {
+        return;
+    }
+
+    // Determina quantos bytes ler (o mínimo entre um bloco inteiro e o que falta)
+    uint32_t bytes_to_read = (*size_left < block_size) ? *size_left : block_size;
+    
+    // Lê o bloco da imagem EXT2 para o buffer
+    if (read_block(ext2_image_file, buffer, block_num, block_size) == 0) {
+        // Escreve o conteúdo do buffer no arquivo do sistema hospedeiro
+        fwrite(buffer, 1, bytes_to_read, host_file);
+        // Decrementa o contador de bytes restantes
+        *size_left -= bytes_to_read;
+    }
 }

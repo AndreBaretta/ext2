@@ -1,7 +1,7 @@
 //  - Descrição:............ Código responsável por declarar as funções básicas de leitura e escrita de estruturas do sistema de arquivos EXT2
 //  - Autor:................ André Felipe Baretta
 //  - Data de criação:...... 19/06/2025
-//  - Datas de atualização:. 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025.
+//  - Datas de atualização:. 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025, 23/06/2025, 24/06/2025, 27/06/2026, 28/06/2025.
 
 #ifndef EXT2_UTILS
 #define EXT2_UTILS
@@ -48,5 +48,6 @@ void deallocate_block(FILE *file, Superblock *sb, block_group_descriptor *bgds, 
 void deallocate_inode_blocks(FILE *file, Superblock *sb, block_group_descriptor *bgds, inode *target_inode);
 void deallocate_inode_metadata(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t inode_num);
 int is_inode_dir(const inode *node); // retorna 1 se o inode for um diretorio e 0 se não for
+void copy_data_block(FILE *ext2_image_file, FILE *host_file, uint32_t block_num, uint8_t *buffer, uint32_t block_size, uint32_t *size_left);
 
 #endif
