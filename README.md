@@ -29,8 +29,8 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
 .                       #Dir. raíz
 ├── Img                 #Dir. com as Imagens do README.md
 ├── include             #Dir. de cabeçalhos do EXT2
-│   ├── EXT2.h          #Assinaturas das funções
-│   └── EXT2_Utils.h    #Estruturas
+│   ├── EXT2.h          #Estruturas
+│   └── EXT2_Utils.h    #Assinaturas das funções
 ├── main.c              #Função Principal
 ├── Makefile            #Script para compilar o projeto
 ├── myext2image.img     #Imagem para testes
@@ -42,17 +42,17 @@ Este projeto é uma implementação do sistema de arquivos EXT2 escrito em lingu
     └── EXT2_Utils.c    #implementação das funções
 ```
 ## Como compilar e executar:
-**Requisitos: Sitema Operacional GNU/Linux, gcc**
+**Requisitos: Sistema Operacional GNU/Linux, gcc, make**
 
 - Para compilar o programa,certifique-se de estar no diretório raíz do projeto e execute o comando `make` no terminal.  
-- Um binário executável será gerado após compilar o programa junto com arquivos de objeto (.obj).
+- Um binário executável será gerado após compilar o programa junto com arquivos de objeto (.o).
 - Para usar  o programa execute:
 
 ```
 $ ./ext2shell <imagem.img>
 ```
 - Os comandos a seguir podem ser executados no terminal:
-    
+  - **`help`**: exibe comandos e instruções de uso.
   - `info`: exibe informações do disco e do sistema de arquivos.
   - `cat <file>`: exibe o conteúdo de um arquivo no formato texto.
   - `attr <file | dir>`: exibe os atributos de um arquivo (file) ou diretório (dir).
@@ -64,7 +64,6 @@ $ ./ext2shell <imagem.img>
   - `rm <file>`: remove o arquivo file do sistema.
   - `rmdir <dir>`: remove o diretório dir, se estiver vazio.
   - `rename <file> <newfilename> `: renomeia arquivo file para newfilename.
-  - `cp <source_path> <target_path>`: copia um arquivo de origem (source_path) para destino (target_path).
-  - `mv <source_path> <target_path>`: move um arquivo de origem (source_path) para destino (target_path).
+  - `cp <EXT2_file_path> <host_file_path>`: copia o conteúdo de um arquivo da imagem EXT2 para um arquivo no disco rígido da máquina real.
 
 - Os arquivos gerados pelo programa podem ser apagados de forma prática executando o comando `make clean`.
