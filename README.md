@@ -62,7 +62,7 @@ $ ./ext2shell <imagem.img>
   | **`help`**         | **nenhum**    | exibe os comandos e instruções de uso. 
    `info`              | **nenhum**    | exibe informações do disco e do sistema de arquivos.
    `cat`               |`<arquivo>`    | exibe o conteúdo do arquivo fornecido no formato texto.
-   `attr`              | `<arquivo_ou_diretório>`    | exibe os atributos de um arquivo ou diretório.
+   `attr`              | `<arquivo_ou_diretório>`    | exibe os atributos do arquivo ou diretório fornecido.
    `print inode`       | `<numero_do_inode>`    | exibe informações do inode fornecido
    `print superblock`  |**nenhum**    | exibe informações do superbloco
    `cd`                |`<caminho>`    | altera o diretório corrente para o caminho fornecido.
