@@ -610,6 +610,9 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 int cmd_help() {
     printf("Comandos disponiveis no EXT2 Shell:\n\n");
     printf("  info                               - Mostra informacoes do sistema de arquivos.\n");
+    printf("  print inode <numero_do_inode>      - Mostra informacoes do inode escolhido.\n");
+    printf("  print superblock                   - Mostra informacoes do superblock.\n");
+    printf("  print groups                       - Mostra informacoes do sistema de arquivos.\n");
     printf("  ls <caminho>                       - Lista o conteudo de um diretorio.\n");
     printf("  cd <caminho>                       - Altera o diretorio atual.\n");
     printf("  pwd                                - Mostra o caminho do diretorio atual.\n");
