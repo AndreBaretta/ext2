@@ -1106,6 +1106,110 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
     return 0;
 }
 
+// função para o comando "print superblock"
+void cmd_print_superblock(Superblock *sb) {
+    // Para formatar data e hora
+    char time_buffer[80];
+    time_t last_check_time = sb->s_lastcheck;
+    struct tm *tm_info = localtime(&last_check_time);
+    strftime(time_buffer, sizeof(time_buffer), "%d/%m/%Y %H:%M", tm_info);
+
+    printf("inodes count: %u\n", sb->s_inodes_count);
+    printf("blocks count: %u\n", sb->s_blocks_count);
+    printf("reserved blocks count: %u\n", sb->s_r_blocks_count);
+    printf("free blocks count: %u\n", sb->s_free_blocks_count);
+    printf("free inodes count: %u\n", sb->s_free_inodes_count);
+    printf("first data block: %u\n", sb->s_first_data_block);
+    printf("block size: %u\n", 1024 << sb->s_log_block_size);
+    printf("fragment size: %u\n", 1024 << sb->s_log_frag_size);
+    printf("blocks per group: %u\n", sb->s_blocks_per_group);
+    printf("fragments per group: %u\n", sb->s_frags_per_group);
+    printf("inodes per group: %u\n", sb->s_inodes_per_group);
+    printf("mount time: %u\n", sb->s_mtime);
+    printf("write time: %u\n", sb->s_wtime);
+    printf("mount count: %u\n", sb->s_mnt_count);
+    printf("max mount count: %u\n", sb->s_max_mnt_count);
+    printf("magic signature: 0x%x\n", sb->s_magic);
+    printf("file system state: %u\n", sb->s_state);
+    printf("errors: %u\n", sb->s_errors);
+    printf("minor revision level: %u\n", sb->s_minor_rev_level);
+    printf("time of last check: %s\n", time_buffer);
+    printf("max check interval: %u\n", sb->s_checkinterval);
+    printf("creator OS: %u\n", sb->s_creator_os);
+    printf("revision level: %u\n", sb->s_rev_level);
+    printf("default uid reserved blocks: %u\n", sb->s_def_resuid);
+    printf("defautl gid reserved blocks: %u\n", sb->s_def_resgid);
+    printf("first non-reserved inode: %u\n", sb->s_first_ino);
+    printf("inode size: %u\n", sb->s_inode_size);
+    printf("block group number: %u\n", sb->s_block_group_nr);
+    printf("compatible feature set: %u\n", sb->s_feature_compat);
+    printf("incompatible feature set: %u\n", sb->s_feature_incompat);
+    printf("read only comp feature set: %u\n", sb->s_feature_ro_compat);
+    printf("volume UUID: ");
+    print_uuid((const uint8_t*)sb->s_uuid);
+    printf("volume name: %s\n", sb->s_volume_name);
+    printf("volume last mounted: %s\n", sb->s_last_mounted);
+    // Campos restantes do exemplo...
+    printf("algorithm usage bitmap: %u\n", sb->s_algo_bitmap);
+    printf("blocks to try to preallocate: %u\n", sb->s_prealloc_blocks);
+    printf("blocks preallocate dir: %u\n", sb->s_prealloc_dir_blocks);
+    printf("journal UUID: ");
+    print_uuid((const uint8_t*)sb->s_journal_uuid);
+    printf("journal INum: %u\n", sb->s_journal_inum);
+}
+
+// função para o comando "print groups"
+void cmd_print_groups(Superblock *sb, block_group_descriptor *bgds) {
+    int group_count = (sb->s_blocks_count + sb->s_blocks_per_group - 1) / sb->s_blocks_per_group;
+    for (int i = 0; i < group_count; i++) {
+        printf("Block Group Descriptor %d:\n", i);
+        printf("block bitmap: %u\n", bgds[i].bg_block_bitmap);
+        printf("inode bitmap: %u\n", bgds[i].bg_inode_bitmap);
+        printf("inode table: %u\n", bgds[i].bg_inode_table);
+        printf("free blocks count: %u\n", bgds[i].bg_free_blocks_count);
+        printf("free inodes count: %u\n", bgds[i].bg_free_inodes_count);
+        printf("used dirs count: %u\n", bgds[i].bg_used_dirs_count);
+        if (i < group_count - 1) printf("\n");
+    }
+}
+
+// função para o comando "print inode"
+void cmd_print_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *inode_num_str) {
+    uint32_t inode_num = atoi(inode_num_str);
+    if (inode_num == 0 || inode_num > sb->s_inodes_count) {
+        fprintf(stderr, "Erro: Numero de inode invalido: %s\n", inode_num_str);
+        return;
+    }
+
+    inode node;
+    if (read_inode(file, &node, sb, bgds, inode_num) != 0) {
+        fprintf(stderr, "Erro: Nao foi possivel ler o inode %u\n", inode_num);
+        return;
+    }
+
+    printf("file format and access rights: 0x%x\n", node.i_mode);
+    printf("user id: %u\n", node.i_uid);
+    printf("lower 32-bit file size: %u\n", node.i_size);
+    printf("access time: %u\n", node.i_atime);
+    printf("creation time: %u\n", node.i_ctime);
+    printf("modification time: %u\n", node.i_mtime);
+    printf("deletion time: %u\n", node.i_dtime);
+    printf("group id: %u\n", node.i_gid);
+    printf("link count inode: %u\n", node.i_links_count);
+    printf("512-bytes blocks: %u\n", node.i_blocks);
+    printf("ext2 flags: %u\n", node.i_flags);
+    printf("reserved (Linux): %u\n", node.i_osd1);
+
+    for (int i = 0; i < 15; i++) {
+        printf("pointer[%d]: %u\n", i, node.i_block[i]);
+    }
+
+    printf("file version (nfs): %u\n", node.i_generation);
+    printf("block number extended attributes: %u\n", node.i_file_acl);
+    printf("higher 32-bit file size: %u\n", node.i_dir_acl);
+    printf("location file fragment: %u\n", node.i_faddr);
+}
+
 // Move arquivo source_path para target_path
 int  cmd_mv(const char *source_path, const char *target_path) {
     printf("Comando mv chamado de %s para %s\n", source_path, target_path);
@@ -1202,6 +1306,22 @@ void shell_loop(FILE *file) {
                 cmd_cat(file, &sb, bgds, current_inode, args[1]);
             else 
                 fprintf(stderr, "Uso: cat <caminho_do_arquivo>\n");
+        } else if (strcmp(args[0], "print") == 0) {
+            if (argc < 2) {
+                fprintf(stderr, "Uso: print <superblock|groups|inode> [numero_do_inode]\n");
+            } else if (strcmp(args[1], "superblock") == 0) {
+                cmd_print_superblock(&sb);
+            } else if (strcmp(args[1], "groups") == 0) {
+                cmd_print_groups(&sb, bgds);
+            } else if (strcmp(args[1], "inode") == 0) {
+                if (argc == 3) {
+                    cmd_print_inode(file, &sb, bgds, args[2]);
+                } else {
+                    fprintf(stderr, "Uso: print inode <numero_do_inode>\n");
+                }
+            } else {
+                fprintf(stderr, "Subcomando invalido: '%s'. Use 'superblock', 'groups', ou 'inode'.\n", args[1]);
+            }
         } else if (strcmp(args[0], "help") == 0) {
             cmd_help();
         } else if (strcmp(args[0], "attr") == 0) {
