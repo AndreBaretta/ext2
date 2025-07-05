@@ -1007,9 +1007,15 @@ int cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_
 }
 
 // Copia arquivo source_ext2_path (na imagem) para dest_host_path (no sistema hospedeiro)
-int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *source_ext2_path, const char *dest_host_path) {
-    // o caminho na imagem é absoluto, então começamos a busca da raiz (inode 2)
-    uint32_t source_inode_num = path_to_inode(file, sb, bgds, source_ext2_path, 2);
+int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *source_ext2_path, const char *dest_host_path) {
+    if (dest_host_path[0] != '/') {
+        fprintf(stderr, "cp: O caminho de destino no sistema hospedeiro deve ser um caminho absoluto (iniciar com '/').\n");
+        return -1;
+    }
+
+    char *full_source_path;
+    uint32_t source_inode_num = resolve_path(file, sb, bgds, current_inode, source_ext2_path, &full_source_path, MAX_PATH_SIZE);
+
     if (source_inode_num == 0) {
         fprintf(stderr, "cp: nao foi possivel copiar '%s': Arquivo nao encontrado na imagem\n", source_ext2_path);
         return -1;
@@ -1017,11 +1023,14 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
 
     inode source_inode;
     if (read_inode(file, &source_inode, sb, bgds, source_inode_num) != 0) {
-        fprintf(stderr, "cp: erro ao ler o inode de origem %u\n", source_inode_num);
+        fprintf(stderr, "cp: erro ao ler o inóde de origem %u\n", source_inode_num);
+        free(full_source_path);
         return -1;
     }
+
     if (is_inode_dir(&source_inode)) {
         fprintf(stderr, "cp: nao e possivel copiar diretorios (nao suportado)\n");
+        free(full_source_path);
         return -1;
     }
     
@@ -1244,13 +1253,25 @@ void shell_loop(FILE *file) {
     while (1) {
         inode_to_path(file, &sb, bgds, current_inode, current_path, MAX_PATH_SIZE);
         printf("[%s] ", current_path);
-        if (fgets(input, sizeof(input), stdin) == NULL) 
+
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            printf("\n");
             break;
+        }
 
-        // remover \n
-        input[strcspn(input, "\n")] = '\0';
+        // Verifica se a linha inteira foi lida (se contém '\n').
+        // Se não houver '\n', a entrada foi longa demais e o buffer de entrada precisa ser limpo.
+        if (strchr(input, '\n') == NULL) {
+            // A linha foi truncada. Limpa o resto do buffer de entrada.
+            fprintf(stderr, "Aviso: A linha de comando era muito longa e foi truncada para %ld caracteres.\n", sizeof(input) - 1);
+            int c;
+            while ((c = getchar()) != '\n' && c != EOF); // Lê e descarta até o fim da linha
+        } else {
+            // A linha foi lida com sucesso, apenas remove o '\n' do final.
+            input[strcspn(input, "\n")] = '\0';
+        }
 
-        // parser manual que lida com argumentos entre aspas, substituindo o strtok.
+        // parser manual que lida com argumentos entre aspas.
         int argc = 0;
         char *p = input;
         while (*p != '\0' && argc < MAX_ARGS - 1) {
@@ -1376,8 +1397,8 @@ void shell_loop(FILE *file) {
             else 
                 fprintf(stderr, "Uso: rename <nome_antigo> <nome_novo>\n");
         } else if (strcmp(args[0], "cp") == 0) {
-            if(argc == 3) 
-                cmd_cp(file, &sb, bgds, args[1], args[2]);
+            if (argc == 3) 
+                cmd_cp(file, &sb, bgds, current_inode, args[1], args[2]);
             else 
                 fprintf(stderr, "Uso: cp <origem_na_imagem> <destino_no_host>\n");
         } else if (strcmp(args[0], "exit") == 0) {
