@@ -27,7 +27,6 @@
 │   └── EXT2_Utils.h    #Assinaturas das funções
 ├── main.c              #Função Principal
 ├── Makefile            #Script para compilar o projeto
-├── myext2image.img     #Imagem para testes
 ├── README.md           #Apresentação e instruções de uso
 ├── Shell               #Dir. do Terminal
 │   ├── Shell.c         #Funções do terminal
