@@ -25,6 +25,7 @@ int cmd_info(Superblock *sb) {
     if(sb == NULL)
         return -1;
 
+    // Extrai e calcula informações do superbloco para exibição.
     uint32_t block_size = 1024 << sb->s_log_block_size;
     uint32_t inode_size = sb->s_inode_size;
     uint32_t blocks_count = sb->s_blocks_count;
@@ -52,6 +53,7 @@ int cmd_info(Superblock *sb) {
 
 // Exibe o conteúdo de um arquivo texto
 int cmd_cat(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // Resolve o caminho para obter o inode do arquivo.
     char *resolved_path;
     uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
     
@@ -60,6 +62,7 @@ int cmd_cat(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t c
         return -1;
     }
 
+    // Lê o inode.    
     inode node;
     if (read_inode(file, &node, sb, bgds, inode_num) != 0) {
         fprintf(stderr, "cat: Erro ao ler inode %u\n", inode_num);
@@ -145,21 +148,22 @@ int cmd_cat(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t c
 
 // Exibe os atributos de um arquivo ou diretório
 int cmd_attr(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // Resolve o caminho.
     char *resolved_path;
-
-    uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
-    
+    uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);    
     if (inode_num == 0) {
         fprintf(stderr, "Arquivo ou diretório não encontrado: %s\n", path);
         return -1;
     }
-
+    
+    // Lê o inode.
     inode node;
     if (read_inode(file, &node, sb, bgds, inode_num) != 0) {
         fprintf(stderr, "Erro ao ler o inode %u\n", inode_num);
         return -1;
     }
 
+    // Formata e exibe os atributos como permissões, tamanho, datas, etc.
     char perms[11];
     format_permissions(node.i_mode, perms);
 
@@ -198,20 +202,21 @@ int cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
         return -1;
     }
 
+    // Lê o inode de destino.
     inode target_inode;
     if (read_inode(file, &target_inode, sb, bgds, inode_num) != 0) {
         fprintf(stderr, "cd: Erro critico ao ler o inode %u.\n", inode_num);
         free(resolved_path);
         return -1;
     }
-
+    // Verifica se o inode é um diretório.
     if (!S_ISDIR(target_inode.i_mode)) {
         fprintf(stderr, "cd: '%s' nao e um diretorio.\n", path);
         free(resolved_path);
         return -1;
     }
 
-    // se todas as verificações passaram, atualize o estado do shell
+    // Se todas as verificações passaram, atualiza o estado do shell
     *current_inode = inode_num;
     strncpy(current_path, resolved_path, MAX_PATH_SIZE);
     current_path[MAX_PATH_SIZE - 1] = '\0';
@@ -221,29 +226,30 @@ int cmd_cd(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char 
 }
 
 int cmd_ls(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // Resolve o caminho
     char *resolved_path;
-
     uint32_t inode_num = resolve_path(file, sb, bgds, current_inode, path, &resolved_path, MAX_PATH_SIZE);
-
     if (inode_num == 0) {
         fprintf(stderr, "ls: O diretorio '%s' nao foi encontrado.\n", path);
         return -1;
     }
 
+    // Lê o inode.
     inode dir_inode;
     if (read_inode(file, &dir_inode, sb, bgds, inode_num) != 0) {
         fprintf(stderr, "ls: Erro ao ler o inode %u\n", inode_num);
         free(resolved_path);
         return -1;
     }
-
     free(resolved_path);
 
+    // Verifica se o inode é um arquivo.
     if (!is_inode_dir(&dir_inode)) {
         fprintf(stderr, "ls: '%s' nao e um diretorio.\n", path);
         return -1;
     }
 
+    // Itera sobre as entradas do diretório usando um offset.
     uint32_t offset = 0;
     while (offset < dir_inode.i_size) {
         ext2_dir_entry *entry = NULL;
@@ -271,15 +277,19 @@ int cmd_pwd(const char *current_path) {
 
 // Cria um arquivo vazio com o nome file
 int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // Resolve o caminho
     char *full_path = malloc(MAX_PATH_SIZE);
     if (!full_path) {
         perror("touch: Falha ao alocar memoria");
         return -1;
     }
 
+    // --- 1. Resolução do Caminho Absoluto ---
+    // Se o caminho já for absoluto (começa com '/'), apenas copia.
     if (path[0] == '/') {
         strncpy(full_path, path, MAX_PATH_SIZE);
     } else {
+        // Se o caminho for relativo, obtém o caminho do diretório atual.
         char current_path[MAX_PATH_SIZE];
         if (inode_to_path(file, sb, bgds, current_inode, current_path, MAX_PATH_SIZE) != 0) {
             if (current_inode == 2) {
@@ -290,6 +300,7 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
                 return -1;
             }
         }
+        // Concatena o caminho atual com o caminho relativo para formar o caminho absoluto.
         int required_len;
         if (strcmp(current_path, "/") == 0) {
             required_len = snprintf(full_path, MAX_PATH_SIZE, "/%s", path);
@@ -297,6 +308,7 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
             required_len = snprintf(full_path, MAX_PATH_SIZE, "%s/%s", current_path, path);
         }
 
+        // Verifica se o caminho resultante não é maior que o buffer.
         if (required_len >= MAX_PATH_SIZE) {
             fprintf(stderr, "touch: O caminho resultante e muito longo.\n");
             free(full_path); // libera a memória alocada antes de sair
@@ -304,6 +316,8 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         }
     }
 
+    // --- 2. Validação e Extração do Nome do Arquivo ---
+    // Verifica se já existe um arquivo ou diretório com o mesmo nome.
     uint32_t target_inode_num = path_to_inode(file, sb, bgds, full_path, 2);
     if (target_inode_num != 0) {
         fprintf(stderr, "touch: Arquivo ou diretorio ja existe: %s\n", full_path);
@@ -311,16 +325,19 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1;
     }
 
+    // Divide o caminho em caminho do diretório pai e nome do novo arquivo.
     char parent_path[MAX_PATH_SIZE];
     const char *filename_ptr;
     char *last_slash = strrchr(full_path, '/');
 
+    // Valida o nome do arquivo.
     if (last_slash == NULL || strlen(filename_ptr = last_slash + 1) == 0 || strlen(filename_ptr) > 255) {
         fprintf(stderr, "touch: Caminho ou nome de arquivo invalido.\n");
         free(full_path);
         return -1;
     }
 
+    // Extrai o caminho do diretório pai.
     char filename[256];
     strncpy(filename, filename_ptr, 255);
     filename[255] = '\0';
@@ -332,15 +349,18 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         strncpy(parent_path, full_path, MAX_PATH_SIZE);
     }
     
-    // agora podemos liberar full_path com segurança, pois já copiamos o nome do arquivo
+    // Agora podemos liberar full_path com segurança, pois já copiamos o nome do arquivo.
     free(full_path);
 
+    // --- 3. Alocação de um Inode Livre ---
+    // Encontra o inode do diretório pai.
     uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
     if (parent_inode_num == 0) {
         fprintf(stderr, "touch: O diretorio pai '%s' nao existe.\n", parent_path);
         return -1;
     }
-
+    
+    // Lê o inode do pai e verifica se é um diretório.
     inode parent_inode;
     read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
     if (!is_inode_dir(&parent_inode)) {
@@ -348,13 +368,16 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1;
     }
 
+    // Determina o grupo do inode pai para procurar um inode livre no mesmo grupo.
     uint32_t group = (parent_inode_num - 1) / sb->s_inodes_per_group;
     uint8_t inode_bitmap[sb->s_inodes_per_group / 8];
     read_inode_bitmap(file, inode_bitmap, sb, bgds, group);
 
+    // Procura um inode livre para o novo arquivo.
     uint32_t new_inode_num = 0;
     for (uint32_t i = 0; i < sb->s_inodes_per_group; i++) {
         uint32_t potential_inode_num = group * sb->s_inodes_per_group + i + 1;
+        // Verifica se o inode não está em uso e não é um inode reservado.
         if (potential_inode_num > sb->s_first_ino && !is_inode_used(inode_bitmap, i + 1, sb->s_inodes_per_group)) {
             inode_bitmap[i / 8] |= (1 << (i % 8));
             new_inode_num = potential_inode_num;
@@ -362,11 +385,13 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         }
     }
 
+    // Valida se existe algum espaço para inodes
     if (new_inode_num == 0) {
         fprintf(stderr, "touch: Nao ha inodes livres no grupo do diretorio pai.\n");
         return -1;
     }
 
+    // --- 4. Adição da Nova Entrada no Diretório Pai ---
     uint32_t offset = 0;
     while (offset < parent_inode.i_size) {
         uint32_t entry_offset = offset;
@@ -375,18 +400,24 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
             break;
         }
 
+        // Calcula o tamanho ideal que a entrada atual precisa e o tamanho necessário para a nova entrada.
+        // O tamanho é sempre alinhado para múltiplos de 4.
         uint16_t ideal_len_entry = 8 + ((entry->name_len + 3) & ~3);
         uint16_t required_len_new = 8 + ((strlen(filename) + 3) & ~3);
 
+        // Verifica se a entrada atual tem espaço sobrando (rec_len > ideal_len) para acomodar a nova entrada.
         if (entry->inode != 0 && entry->rec_len >= ideal_len_entry + required_len_new) {
             uint16_t original_rec_len = entry->rec_len;
             
+            // "Encolhe" a entrada atual para seu tamanho ideal.
             entry->rec_len = ideal_len_entry;
             write_directory_entry(file, entry, sb, &parent_inode, entry_offset);
             
+            // O espaço restante será usado para a nova entrada.
             uint32_t new_entry_offset = entry_offset + ideal_len_entry;
             uint16_t new_entry_rec_len = original_rec_len - ideal_len_entry;
             
+            // Aloca e preenche a nova entrada de diretório.
             ext2_dir_entry *new_file_entry = calloc(1, new_entry_rec_len);
             if (!new_file_entry) {
                 // simplificação: não fazemos um rollback
@@ -400,10 +431,13 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
             new_file_entry->file_type = 1; // EXT2_FT_REG_FILE
             memcpy(new_file_entry->name, filename, new_file_entry->name_len);
 
+            // Escreve a nova entrada no disco.
             write_directory_entry(file, new_file_entry, sb, &parent_inode, new_entry_offset);
             free(new_file_entry);
             free(entry);
 
+            // --- 5. Criação do Inode e Atualização de Metadados ---
+            // Cria a estrutura do inode para o novo arquivo.
             inode new_file_inode = {0};
             new_file_inode.i_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
             new_file_inode.i_links_count = 1;
@@ -412,14 +446,16 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
             new_file_inode.i_ctime = new_file_inode.i_mtime = new_file_inode.i_atime = time(NULL);
             write_inode(file, &new_file_inode, sb, bgds, new_inode_num);
 
+            // Grava o bitmap de inodes modificado.
             write_inode_bitmap(file, inode_bitmap, sb, bgds, group);
             
+            // Atualiza o tempo de modificação do diretório pai.
             parent_inode.i_mtime = time(NULL);
             write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
             
+            // Decrementa contadores de inodes livres e grava as estruturas de metadados.
             bgds[group].bg_free_inodes_count--;
             write_block_group_descriptor(file, &bgds[group], sb, group);
-            
             sb->s_free_inodes_count--;
             write_superblock(file, sb);
             
@@ -437,7 +473,8 @@ int cmd_touch(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 
 // Cria um diretório vazio com o nome dir
 int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
-    // resolve e valida caminhos
+    // --- 1. Resolução e Validação do Caminho ---
+    // A lógica para resolver o caminho absoluto e validar a existência é idêntica à de cmd_touch.
     char full_path[MAX_PATH_SIZE];
     if (path[0] == '/') {
         strncpy(full_path, path, MAX_PATH_SIZE);
@@ -460,6 +497,7 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1;
     }
 
+    // Separa o nome do novo diretório e o caminho do pai.
     char parent_path[MAX_PATH_SIZE];
     char new_dir_name[256];
     char *last_slash = strrchr(full_path, '/');
@@ -480,10 +518,10 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     inode parent_inode;
     read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
 
-    // alocar recursos (inode e blocos)
+    // --- 2. Alocação de Recursos (Inode e Bloco de Dados) ---
     uint32_t group = (parent_inode_num - 1) / sb->s_inodes_per_group;
     
-    // alocar inode
+    // Aloca um inode livre.
     uint8_t inode_bitmap[sb->s_inodes_per_group / 8];
     read_inode_bitmap(file, inode_bitmap, sb, bgds, group);
     uint32_t new_inode_num = 0;
@@ -499,7 +537,7 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1; 
     }
 
-    // alocar bloco de dados
+    // Aloca um bloco de dados livre para o novo diretório.
     uint32_t block_size = 1024 << sb->s_log_block_size;
     uint8_t block_bitmap[block_size];
     read_block_bitmap(file, block_bitmap, sb, bgds, group);
@@ -517,7 +555,8 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     }
 
 
-    // cria o inode do novo diretorio
+    // --- 3. Criação do Inode e do Bloco de Dados do Novo Diretório ---
+    // Preenche a estrutura do inode para o novo diretório.
     inode new_dir_inode = {0};
     new_dir_inode.i_mode = S_IFDIR | 0755; // wxr-xr-x
     new_dir_inode.i_links_count = 2;       // entradas . e ..
@@ -526,9 +565,9 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     new_dir_inode.i_atime = new_dir_inode.i_ctime = new_dir_inode.i_mtime = time(NULL);
     new_dir_inode.i_block[0] = new_block_num;
 
-    // cria entrada para . e ..
+    // Preenche o bloco de dados com as entradas "." e "..".
     char *block_buffer = calloc(1, block_size);
-        // cria entrada para .
+    // Cria a entrada para "."
     ext2_dir_entry *self_entry = (ext2_dir_entry*)block_buffer;
     self_entry->inode = new_inode_num;
     self_entry->name_len = 1;
@@ -536,7 +575,7 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     self_entry->rec_len = 12; // Tamanho ideal para esta entrada
     strcpy(self_entry->name, ".");
     
-        // cria entrada para ..
+    // Cria a entrada para ".."
     ext2_dir_entry *parent_entry = (ext2_dir_entry*)(block_buffer + self_entry->rec_len);
     parent_entry->inode = parent_inode_num;
     parent_entry->name_len = 2;
@@ -544,11 +583,12 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     parent_entry->rec_len = block_size - self_entry->rec_len; // preenche o resto do bloco
     strcpy(parent_entry->name, "..");
     
-    // escreve o bloco de dados criado
+    // Escreve o bloco de dados inicializado no disco.
     write_block(file, block_buffer, new_block_num, block_size);
     free(block_buffer);
 
-    // adiciona entrada no diretorio pai
+    // --- 4. Adição da Entrada no Diretório Pai e Atualização de Metadados ---
+    // Adiciona a entrada para o novo diretório no diretório pai (lógica idêntica à de cmd_touch).
     uint32_t offset = 0;
     int space_found = 0;
     while (offset < parent_inode.i_size) {
@@ -583,12 +623,12 @@ int cmd_mkdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1; 
     }
 
-    // inode do pai: aumenta links_count e atualiza data de modifição
+    // O link count do pai aumenta, pois a entrada ".." do novo diretório aponta para ele.
     parent_inode.i_links_count++;
     parent_inode.i_mtime = time(NULL);
     write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
 
-    // escreve inode novo, bitmaps e atualizar contadores
+    // Escreve todas as novas estruturas e metadados modificados no disco.
     write_inode(file, &new_dir_inode, sb, bgds, new_inode_num);
     write_inode_bitmap(file, inode_bitmap, sb, bgds, group);
     write_block_bitmap(file, block_bitmap, sb, bgds, group);
@@ -633,6 +673,7 @@ int cmd_help() {
 
 // Remove o arquivo especificado
 int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *path) {
+    // Resolve o caminho.
     char full_path[MAX_PATH_SIZE];
     if (path[0] == '/') {
         strncpy(full_path, path, MAX_PATH_SIZE);
@@ -656,12 +697,14 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         }
     }
 
+    // Encontra o número do inode.
     uint32_t inode_num = path_to_inode(file, sb, bgds, full_path, 2);
     if (inode_num == 0) {
         fprintf(stderr, "rm: nao foi possivel remover '%s': Arquivo ou diretorio nao encontrado\n", path);
         return -1;
     }
 
+    // Lê o inode.
     inode target_inode;
     read_inode(file, &target_inode, sb, bgds, inode_num);
     if (is_inode_dir(&target_inode)) {
@@ -669,7 +712,7 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         return -1;
     }
 
-    // extrai o nome do arquivo e o caminho do diretório pai a partir do caminho completo
+    // Extrai o nome do arquivo e o caminho do diretório pai a partir do caminho completo.
     char parent_path[MAX_PATH_SIZE];
     char filename[256];
     char *last_slash = strrchr(full_path, '/');
@@ -689,10 +732,12 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         strcpy(parent_path, full_path);
     }
 
+    // Encontra e lê o inode pai (diretório pai).
     uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
     inode parent_inode;
     read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
 
+    // Remove a entrada do diretório pai.
     uint32_t offset = 0;
     ext2_dir_entry *prev_entry = NULL;
     uint32_t prev_entry_offset = 0;
@@ -711,7 +756,7 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
 
             if (strcmp(name, filename) == 0 && entry->inode == inode_num) {
                 if (prev_entry) {
-                    // adiciona o tamanho do registro atual ao anterior para "apagar" o atual
+                    // Adiciona o tamanho do registro atual ao anterior para apagar o atual.
                     prev_entry->rec_len += entry->rec_len;
                     write_directory_entry(file, prev_entry, sb, &parent_inode, prev_entry_offset);
                     entry_removed = 1;
@@ -726,6 +771,7 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
             }
         }
 
+        // Vai para a próxima iteração.
         if (prev_entry) free(prev_entry);
         prev_entry = entry;
         prev_entry_offset = offset;
@@ -738,18 +784,18 @@ int cmd_rm(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         return -1;
     }
 
-    // atualiza os metadados
+    // Atualiza os metadados.
     parent_inode.i_mtime = time(NULL);
     write_inode(file, &parent_inode, sb, bgds, parent_inode_num);
-
     target_inode.i_links_count--;
+    
     if (target_inode.i_links_count == 0) {
         deallocate_inode_blocks(file, sb, bgds, &target_inode);
         deallocate_inode_metadata(file, sb, bgds, inode_num);
         target_inode.i_dtime = time(NULL);
     }
-    write_inode(file, &target_inode, sb, bgds, inode_num);
 
+    write_inode(file, &target_inode, sb, bgds, inode_num);
     write_superblock(file, sb);
 
     int group_count = (sb->s_blocks_count + sb->s_blocks_per_group - 1) / sb->s_blocks_per_group;
@@ -766,12 +812,12 @@ int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     // resolver o caminho e obter o inode do diretorio
     uint32_t target_inode_num = path_to_inode(file, sb, bgds, path, current_inode);
 
+    // Valida o diretório alvo.
     if (target_inode_num == 0) {
         fprintf(stderr, "rmdir: falha ao remover '%s': Arquivo ou diretorio nao encontrado\n", path);
         return -1;
     }
 
-    // validações
     if (target_inode_num == 2) {
         fprintf(stderr, "rmdir: falha ao remover '/': Nao e possivel remover o diretorio raiz\n");
         return -1;
@@ -781,18 +827,20 @@ int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
         return -1;
     }
 
+    // Lê o inode.
     inode target_inode;
     if (read_inode(file, &target_inode, sb, bgds, target_inode_num) != 0) {
         fprintf(stderr, "rmdir: erro critico ao ler o inode %u\n", target_inode_num);
         return -1;
     }
 
+    // Verifica se o inode é um arquivo comum.
     if (!is_inode_dir(&target_inode)) {
         fprintf(stderr, "rmdir: falha ao remover '%s': Nao e um diretorio\n", path);
         return -1;
     }
 
-    // verificar se o diretório está vazio (contém apenas '.' e '..')
+    // Verificar se o diretório está vazio (contém apenas '.' e '..')
     uint32_t offset = 0;
     while (offset < target_inode.i_size) {
         ext2_dir_entry *entry = NULL;
@@ -824,10 +872,12 @@ int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
     if (last_slash == full_path) strcpy(parent_path, "/");
     else { *last_slash = '\0'; strcpy(parent_path, full_path); }
 
+    // Lê o inode pai (diretório pai)
     uint32_t parent_inode_num = path_to_inode(file, sb, bgds, parent_path, 2);
     inode parent_inode;
     read_inode(file, &parent_inode, sb, bgds, parent_inode_num);
 
+    // Remove a entrada do diretório pai.
     offset = 0;
     uint32_t prev_entry_offset = 0;
     while (offset < parent_inode.i_size) {
@@ -883,7 +933,7 @@ int cmd_rmdir(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t
 
 // Renomeia um arquivo de file para newfilename
 int cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *source_name, const char *new_name) {
-    // validação
+    // Faz validações
     if (strlen(new_name) > 255) {
         fprintf(stderr, "rename: o novo nome '%s' e muito longo\n", new_name);
         return -1;
@@ -904,6 +954,7 @@ int cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_
         return -1;
     }
 
+    // Lê o inode pai
     inode parent_inode;
     read_inode(file, &parent_inode, sb, bgds, current_inode);
 
@@ -982,7 +1033,8 @@ int cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_
             free(entry);
             break;
         }
-        offset += entry->rec_len;
+        offset += entry->rec_len;// fechar o arquivo e liberar memória alocada
+    
         free(entry);
     }
     
@@ -1008,11 +1060,15 @@ int cmd_rename(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_
 
 // Copia arquivo source_ext2_path (na imagem) para dest_host_path (no sistema hospedeiro)
 int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t current_inode, const char *source_ext2_path, const char *dest_host_path) {
+    // --- 1. Validação do Caminho de Destino ---
+    // O caminho de destino no sistema hospedeiro deve ser absoluto.
     if (dest_host_path[0] != '/') {
         fprintf(stderr, "cp: O caminho de destino no sistema hospedeiro deve ser um caminho absoluto (iniciar com '/').\n");
         return -1;
     }
 
+    // --- 2. Resolução e Validação do Arquivo de Origem ---
+    // Resolve o caminho na imagem EXT2 para encontrar o inode do arquivo de origem.
     char *full_source_path;
     uint32_t source_inode_num = resolve_path(file, sb, bgds, current_inode, source_ext2_path, &full_source_path, MAX_PATH_SIZE);
 
@@ -1021,6 +1077,7 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         return -1;
     }
 
+    // Lê o inode de origem.
     inode source_inode;
     if (read_inode(file, &source_inode, sb, bgds, source_inode_num) != 0) {
         fprintf(stderr, "cp: erro ao ler o inóde de origem %u\n", source_inode_num);
@@ -1028,20 +1085,23 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         return -1;
     }
 
+    // Valida se o inode de origem é um arquivo regular. A cópia de diretórios não é suportada.
     if (is_inode_dir(&source_inode)) {
         fprintf(stderr, "cp: nao e possivel copiar diretorios (nao suportado)\n");
         free(full_source_path);
         return -1;
     }
     
-    // abrir o arquivo de destino no sistema
+    // --- 3. Abertura do Arquivo de Destino no Sistema Hospedeiro ---
+    // Usa fopen da biblioteca padrão para criar/abrir o arquivo no sistema local em modo de escrita binária.
     FILE *host_file = fopen(dest_host_path, "wb");
     if (host_file == NULL) {
         perror("cp: erro ao criar o arquivo de destino no sistema hospedeiro");
         return -1;
     }
 
-    // ler os blocos da imagem e escrever no destino
+    // --- 4. Leitura e Cópia dos Blocos de Dados ---
+    // Prepara um buffer para a transferência de dados e inicializa o contador de bytes restantes.
     uint32_t block_size = 1024 << sb->s_log_block_size;
     uint32_t size_left = source_inode.i_size;
     uint8_t *buffer = malloc(block_size);
@@ -1051,12 +1111,12 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         return -1;
     }
 
-    // blocos diretos
+    // blocos diretos (0-11)
     for (int i = 0; i < 12 && size_left > 0; i++) {
         copy_data_block(file, host_file, source_inode.i_block[i], buffer, block_size, &size_left);
     }
 
-    // bloco indireto simples
+    // bloco indireto simples (12)
     if (size_left > 0 && source_inode.i_block[12]) {
         uint32_t *indirect = malloc(block_size);
         if(indirect && read_block(file, indirect, source_inode.i_block[12], block_size) == 0) {
@@ -1067,7 +1127,7 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         if(indirect) free(indirect);
     }
 
-    // bloco indireto duplo
+    // bloco indireto duplo (13)
     if (size_left > 0 && source_inode.i_block[13]) {
         uint32_t *double_indirect = malloc(block_size);
         if(double_indirect && read_block(file, double_indirect, source_inode.i_block[13], block_size) == 0) {
@@ -1085,7 +1145,7 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         if(double_indirect) free(double_indirect);
     }
 
-    // bloco indireto triplo
+    // bloco indireto triplo (14)
     if (size_left > 0 && source_inode.i_block[14]) {
         uint32_t *triple_indirect = malloc(block_size);
         if (triple_indirect && read_block(file, triple_indirect, source_inode.i_block[14], block_size) == 0) {
@@ -1110,7 +1170,8 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
         if (triple_indirect) free(triple_indirect);
     }
 
-    // fechar o arquivo e liberar memória alocada
+    // --- 5. Finalização ---
+    // Libera a memória do buffer de cópia e fecha o arquivo do sistema hospedeiro.
     free(buffer);
     fclose(host_file);
 
@@ -1120,7 +1181,7 @@ int cmd_cp(FILE *file, Superblock *sb, block_group_descriptor *bgds, uint32_t cu
 
 // função para o comando "print superblock"
 void cmd_print_superblock(Superblock *sb) {
-    // Para formatar data e hora
+    // Para formatar data e hora.
     char time_buffer[80];
     time_t last_check_time = sb->s_lastcheck;
     struct tm *tm_info = localtime(&last_check_time);
@@ -1170,7 +1231,7 @@ void cmd_print_superblock(Superblock *sb) {
     printf("journal INum: %u\n", sb->s_journal_inum);
 }
 
-// função para o comando "print groups"
+// Função para o comando "print groups"
 void cmd_print_groups(Superblock *sb, block_group_descriptor *bgds) {
     int group_count = (sb->s_blocks_count + sb->s_blocks_per_group - 1) / sb->s_blocks_per_group;
     for (int i = 0; i < group_count; i++) {
@@ -1185,14 +1246,16 @@ void cmd_print_groups(Superblock *sb, block_group_descriptor *bgds) {
     }
 }
 
-// função para o comando "print inode"
+// Função para o comando "print inode"
 void cmd_print_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, const char *inode_num_str) {
+    // Faz validação do inode fornecido pelo usuário.
     uint32_t inode_num = atoi(inode_num_str);
     if (inode_num == 0 || inode_num > sb->s_inodes_count) {
         fprintf(stderr, "Erro: Numero de inode invalido: %s\n", inode_num_str);
         return;
     }
 
+    // Lê os inodes.
     inode node;
     if (read_inode(file, &node, sb, bgds, inode_num) != 0) {
         fprintf(stderr, "Erro: Nao foi possivel ler o inode %u\n", inode_num);
@@ -1222,9 +1285,9 @@ void cmd_print_inode(FILE *file, Superblock *sb, block_group_descriptor *bgds, c
     printf("location file fragment: %u\n", node.i_faddr);
 }
 
-// Move arquivo source_path para target_path
+// Move arquivo source_path para target_path (FUNÇÃO NÃO IMPLEMENTADA)
 int  cmd_mv(const char *source_path, const char *target_path) {
-    printf("Comando mv chamado de %s para %s\n", source_path, target_path);
+    printf("Comando mv chamado de %s para %s (FUNÇÃO NÃO IMPLEMENTADA\n", source_path, target_path);
     return 0;
 }
 
