@@ -1,7 +1,7 @@
 //  - Descrição:............ Código responsável por declarar as funções básicas de leitura e escrita de estruturas do sistema de arquivos EXT2
 //  - Autor:................ André Felipe Baretta
 //  - Data de criação:...... 19/06/2025
-//  - Datas de atualização:. 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025, 23/06/2025, 24/06/2025, 27/06/2026, 28/06/2025.
+//  - Datas de atualização:. 19/06/2025, 20/06/2025, 21/06/2025, 22/06/2025, 23/06/2025, 24/06/2025, 27/06/2025, 28/06/2025.
 
 #ifndef EXT2_UTILS
 #define EXT2_UTILS
